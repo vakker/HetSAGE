@@ -1,0 +1,48 @@
+name: r2g
+channels:
+  - pytorch
+  - conda-forge
+  - anaconda
+  - defaults
+dependencies:
+  - python=3.7
+  - cython
+  - conda>=4.7
+  - ipython
+  - ipdb
+  - numpy
+  - scipy
+  - pandas
+  - pip
+  - pytorch=1.6.0
+  - torchvision
+  - cudatoolkit=10.2
+  - pyyaml
+  - scikit-learn
+  - scikit-optimize
+  - tqdm
+  - matplotlib
+  - psutil
+  - hyperopt
+  - pytest
+  - pytest-cov
+  - pymysql
+  - setproctitle
+  - tabulate
+  - mlflow
+  - pip:
+      - tensorflow
+      - tensorboardX
+      - ray[all]
+      - gputil
+      - ax-platform
+      - pyswip
+      - https://pytorch-geometric.com/whl/torch-1.6.0/torch_scatter-latest%2Bcu102-cp37-cp37m-linux_x86_64.whl
+      - https://pytorch-geometric.com/whl/torch-1.6.0/torch_sparse-latest%2Bcu102-cp37-cp37m-linux_x86_64.whl
+      - https://pytorch-geometric.com/whl/torch-1.6.0/torch_cluster-latest%2Bcu102-cp37-cp37m-linux_x86_64.whl
+      - https://pytorch-geometric.com/whl/torch-1.6.0/torch_spline_conv-latest%2Bcu102-cp37-cp37m-linux_x86_64.whl
+      # - torch-scatter==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+      # - torch-sparse==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+      # - torch-cluster==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+      # - torch-spline-conv==latest+cu102 -f https://pytorch-geometric.com/whl/torch-1.6.0.html
+      - torch-geometric
