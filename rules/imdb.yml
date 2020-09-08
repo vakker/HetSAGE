@@ -1,0 +1,76 @@
+sql_addr: "mysql+pymysql://vince:asdqwe@localhost:3306/"
+sql_db: "imdb_small"
+tables:
+  actors:
+    pred_map: actor
+    cols:
+      id: actor_
+      gender: ''
+  directors:
+    pred_map: director
+    cols:
+      id: director_
+  movies:
+    pred_map: movie
+    cols:
+      id: movie_
+      year: ''
+  movies_directors:
+    pred_map: directed
+    cols:
+      director_id: director_
+      movie_id: movie_
+  movies_genres:
+    pred_map: genre
+    cols:
+      movie_id: movie_
+      genre: ''
+  roles:
+    pred_map: has_role
+    cols:
+      actor_id: actor_
+      movie_id: movie_
+
+rules:
+  - "target(A, drama) :- movie(A, _), genre(A, drama)"
+  - "target(A, not_drama) :- movie(A, _), \\+ genre(A, drama)"
+  - "movie_filt(A) :- target(A, _)"
+  # - "dummy(D) :- movie(M, _), string_concat('dummy_',M,D)"
+  # - "m2d(M, D) :- movie(M, _), string_concat('dummy_',M,D)"
+  # - "d2t(D, T) :- m2d(M, D), target(M, T)"
+  # - "director(A) :- director(A, _, _)"
+  # - "movie(A) :- movie(A, _, _, _)"
+  # - "role(A,M) :- role(A, M)"
+
+types:
+  - ['actor(A, _)', ['actor', 'A']]
+  # - ['actor(_, G)', ['gender', 'G']]
+  - ['director(A)', ['director', 'A']]
+  # - ['movie(A, _)', ['movie', 'A']]
+  - ['movie_filt(A)', ['movie', 'A']]
+  # - ['m2d(_, D)', ['dummy', 'D']]
+  - ['target(_, G)', ['genre', 'G']]
+
+properties:
+  - ['target(_,G)', ['genre', 'G', 'G'], true]
+  # - ['actor(A,G)', ['gender', 'A', 'G'], true]
+  - ['target(M, G)', ['genre', 'M', 'G'], true]
+  # - ['target(M, G)', ['genre2', 'M', 'G'], true]
+  # - ['actor(A,G)', ['gender', 'G', 'G'], true]
+  # - ['actor(A,_)', ['actor_id', 'A', 'A'], true]
+  # - ['director(D)', ['dir_id', 'D', 'D'], true]
+  # - ['movie(M,_)', ['movie_id', 'M', 'M'], true]
+
+connections:
+  - ['target(M,G)', ['genre1', 'M', 'G']]
+  - ['target(M,G)', ['genre2', 'G', 'M']]
+  # - ['has_role(A,M)', ['has_role1', 'A', 'M']]
+  # - ['has_role(A,M)', ['has_role2', 'M', 'A']]
+  # - ['directed(D,M)', ['directed1', 'D', 'M']]
+  # - ['directed(D,M)', ['directed2', 'M', 'D']]
+  # - ['m2d(M,D)', ['m2d1', 'M', 'D']]
+  # - ['m2d(M,D)', ['m2d2', 'D', 'M']]
+  # - ['d2t(D,T)', ['d2t1', 'T', 'D']]
+  # - ['d2t(D,T)', ['d2t2', 'D', 'T']]
+  # - ['actor(A,G)', ['gender', 'A', 'G']]
+  # - ['actor(A,G)', ['gender', 'G', 'A']]

@@ -1,0 +1,57 @@
+sql_addr: "mysql+pymysql://vince:asdqwe@localhost:3306/"
+sql_db: "CORA"
+tables:
+  paper:
+    pred_map: paper
+    cols:
+      paper_id: paper_
+      class_label: ''
+  cites:
+    pred_map: cites
+    cols:
+      citing_paper_id: paper_
+      cited_paper_id: paper_
+  content:
+    pred_map: contains
+    cols:
+      paper_id: paper_
+      word_cited_id: ""
+
+rules:
+  # - "target(A, drama) :- movie(A, _), genre(A, drama)"
+  # - "target(A, not_drama) :- movie(A, _), \\+ genre(A, drama)"
+  # - "movie_filt(A) :- target(A, _)"
+  # - "dummy(D) :- movie(M, _), string_concat('dummy_',M,D)"
+  # - "m2d(M, D) :- movie(M, _), string_concat('dummy_',M,D)"
+  # - "d2t(D, T) :- m2d(M, D), target(M, T)"
+  # - "director(A) :- director(A, _, _)"
+  # - "movie(A) :- movie(A, _, _, _)"
+  # - "role(A,M) :- role(A, M)"
+
+types:
+  - ['paper(P, _)', ['paper', 'P']]
+
+properties:
+  - ['paper(P,L)', ['label', 'P', 'L'], 'single_cat']
+  - ['contains(P,W)', ['contains', 'P', 'W'], 'multi_cat']
+  # - ['actor(A,G)', ['gender', 'A', 'G'], true]
+  # - ['target(M, G)', ['genre', 'M', 'G'], true]
+  # - ['target(M, G)', ['genre2', 'M', 'G'], true]
+  # - ['actor(A,G)', ['gender', 'G', 'G'], true]
+  # - ['actor(A,_)', ['actor_id', 'A', 'A'], true]
+  # - ['director(D)', ['dir_id', 'D', 'D'], true]
+  # - ['movie(M,_)', ['movie_id', 'M', 'M'], true]
+
+connections:
+  - ['cites(P1,P2)', ['cites1', 'P1', 'P2']]
+  - ['cites(P1,P2)', ['cites2', 'P2', 'P1']]
+  # - ['has_role(A,M)', ['has_role1', 'A', 'M']]
+  # - ['has_role(A,M)', ['has_role2', 'M', 'A']]
+  # - ['directed(D,M)', ['directed1', 'D', 'M']]
+  # - ['directed(D,M)', ['directed2', 'M', 'D']]
+  # - ['m2d(M,D)', ['m2d1', 'M', 'D']]
+  # - ['m2d(M,D)', ['m2d2', 'D', 'M']]
+  # - ['d2t(D,T)', ['d2t1', 'T', 'D']]
+  # - ['d2t(D,T)', ['d2t2', 'D', 'T']]
+  # - ['actor(A,G)', ['gender', 'A', 'G']]
+  # - ['actor(A,G)', ['gender', 'G', 'A']]

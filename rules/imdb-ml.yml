@@ -1,0 +1,94 @@
+sql_addr: "mysql+pymysql://vince:asdqwe@localhost:3306/"
+sql_db: "imdb_MovieLens"
+tables:
+  users:
+    pred_map: user
+    cols:
+      userid: user_
+      age: ''
+      u_gender: ''
+  actors:
+    pred_map: actor
+    cols:
+      actorid: actor_
+      a_gender: ''
+  directors:
+    pred_map: director
+    cols:
+      directorid: director_
+  movies:
+    pred_map: movie
+    cols:
+      movieid: movie_
+      year: ''
+  movies2directors:
+    pred_map: directed
+    cols:
+      directorid: director_
+      movieid: movie_
+  movies2actors:
+    pred_map: has_role
+    cols:
+      actorid: actor_
+      movieid: movie_
+  u2base:
+    pred_map: rating
+    cols:
+      userid: user_
+      movieid: movie_
+      rating: ''
+
+rules:
+  # - "target(A, drama) :- movie(A, _), genre(A, drama)"
+  # - "target(A, not_drama) :- movie(A, _), \\+ genre(A, drama)"
+  # - "movie_filt(A) :- target(A, _)"
+  # - "dummy(D) :- movie(M, _), string_concat('dummy_',M,D)"
+  # - "m2d(M, D) :- movie(M, _), string_concat('dummy_',M,D)"
+  # - "d2t(D, T) :- m2d(M, D), target(M, T)"
+  # - "director(A) :- director(A, _, _)"
+  # - "movie(A) :- movie(A, _, _, _)"
+  # - "role(A,M) :- role(A, M)"
+
+types:
+  - ['user(A, _, _)', ['user', 'A']]
+  - ['actor(A, _)', ['actor', 'A']]
+  # - ['actor(_, G)', ['gender', 'G']]
+  - ['director(A)', ['director', 'A']]
+  # - ['movie(A, _)', ['movie', 'A']]
+  - ['movie(A, _)', ['movie', 'A']]
+  # - ['m2d(_, D)', ['dummy', 'D']]
+  # - ['target(_, G)', ['genre', 'G']]
+
+properties:
+  - ['actor(A,G)', ['gender', 'A', 'G'], 'single_cat']
+  - ['user(U, A, _)', ['age', 'U', 'A'], 'prop']
+  - ['user(U, _, G)', ['gender', 'U', 'G'], 'single_cat']
+  # - ['target(M, G)', ['genre2', 'M', 'G'], true]
+  # - ['actor(A,G)', ['gender', 'G', 'G'], true]
+  # - ['actor(A,_)', ['actor_id', 'A', 'A'], true]
+  # - ['director(D)', ['dir_id', 'D', 'D'], true]
+  # - ['movie(M,_)', ['movie_id', 'M', 'M'], true]
+
+connections:
+  # - ['target(M,G)', ['genre1', 'M', 'G']]
+  # - ['target(M,G)', ['genre2', 'G', 'M']]
+  - ['has_role(A,M)', ['has_role_1', 'A', 'M']]
+  - ['has_role(A,M)', ['has_role_2', 'M', 'A']]
+  - ['directed(D,M)', ['directed_1', 'D', 'M']]
+  - ['directed(D,M)', ['directed_2', 'M', 'D']]
+  - ['rating(U, M, 1)', ['r1_1', 'U', 'M']]
+  - ['rating(U, M, 2)', ['r2_1', 'U', 'M']]
+  - ['rating(U, M, 3)', ['r3_1', 'U', 'M']]
+  - ['rating(U, M, 4)', ['r4_1', 'U', 'M']]
+  - ['rating(U, M, 5)', ['r5_1', 'U', 'M']]
+  - ['rating(U, M, 1)', ['r1_2', 'M', 'U']]
+  - ['rating(U, M, 2)', ['r2_2', 'M', 'U']]
+  - ['rating(U, M, 3)', ['r3_2', 'M', 'U']]
+  - ['rating(U, M, 4)', ['r4_2', 'M', 'U']]
+  - ['rating(U, M, 5)', ['r5_2', 'M', 'U']]
+  # - ['m2d(M,D)', ['m2d1', 'M', 'D']]
+  # - ['m2d(M,D)', ['m2d2', 'D', 'M']]
+  # - ['d2t(D,T)', ['d2t1', 'T', 'D']]
+  # - ['d2t(D,T)', ['d2t2', 'D', 'T']]
+  # - ['actor(A,G)', ['gender', 'A', 'G']]
+  # - ['actor(A,G)', ['gender', 'G', 'A']]

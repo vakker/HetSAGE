@@ -1,0 +1,43 @@
+sql_addr: "mysql+pymysql://vince:asdqwe@localhost:3306/"
+sql_db: "mutagenesis_188"
+tables:
+  atoms:
+    pred_map: atom
+    cols:
+      id: atom_
+      drug_id: drug_
+      element: ""
+      # charge: ""
+  bonds:
+    pred_map: bond
+    cols:
+      atom1_id: atom_
+      atom2_id: atom_
+      bond_type: ""
+  drugs:
+    pred_map: drug
+    cols:
+      id: drug_
+      active: ""
+
+rules:
+  - "in_drug(A, D) :- atom(A, D, _)"
+  - "bond_sym(A1, A2) :- bond(A1, A2, BT);  bond(A2, A1, BT)"
+  # - "charge(A, C) :- atom(A, _, _, C)"
+  - "element(A, E) :- atom(A, _, E)"
+
+types:
+  - ['atom(A, _, _)', ['atom', 'A']]
+  # - ['element(A, E)', ['element', 'E']]
+  - ['drug(D, _)', ['drug', 'D']]
+
+properties:
+  # - ['charge(A,C)', ['charge', 'A', 'C'], False]
+  - ['element(A,E)', ['element', 'A', 'E'], True]
+  - ['drug(D,A)', ['active', 'D', 'A'], True]
+
+connections:
+  - ['bond_sym(A1,A2)', ['bond_sym', 'A1', 'A2']]
+  - ['in_drug(A,D)', ['in_drug1', 'A', 'D']]
+  - ['in_drug(A,D)', ['in_drug2', 'D', 'A']]
+  # - ['element(A,E)', ['element', 'A', 'E']]
