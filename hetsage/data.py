@@ -11,7 +11,6 @@ from torch_sparse import SparseTensor
 from tqdm import tqdm
 
 import torch_geometric
-from torch_geometric.data.sampler import Adj
 from torch_geometric.utils import (contains_isolated_nodes,
                                    contains_self_loops, is_undirected)
 
@@ -113,8 +112,12 @@ def featurize(g, target_node, target_prop):
         # g.nodes[n]['x_in'] = torch.tensor(np.concatenate([x_p, x_c, y]))
         # g.nodes[n]['x_out'] = torch.tensor(np.concatenate([x_p, x_c]))
         # g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_c]))
-        g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc, y]))
-        # g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc]))
+        g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc]))
+        # g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc, y]))
+        # print(
+        #     get_tensor(np.concatenate([x_p, x_sc, x_mc])).shape,
+        #     get_tensor(np.concatenate([x_p, x_sc, x_mc, y])).shape,
+        # )
         # g.nodes[n]['x_in'] = get_tensor(np.concatenate([y]))
         g.nodes[n]['x_out'] = get_tensor(np.concatenate([x_p, x_sc, x_mc]))
         g.nodes[n]['y'] = torch.tensor(y)
@@ -147,7 +150,6 @@ def get_tensor(np_arr):
 
 def get_cat(cats, cat_keys, all_cats):
     x_c = []
-    # x_c = [(cats[k] == np.array(all_cats[k])).astype(np.int) for k in cat_keys]
     for k in cat_keys:
         if not isinstance(cats[k], list):
             cs = [cats[k]]
@@ -159,7 +161,6 @@ def get_cat(cats, cat_keys, all_cats):
                 c_.append(1)
             else:
                 c_.append(0)
-        # (cats[k] == np.array(all_cats[k])).astype(np.int)
         x_c.append(c_)
     if x_c:
         return np.concatenate(x_c)
@@ -181,6 +182,7 @@ def norm(v, v_min, v_max):
 class NeighborSampler(torch.utils.data.DataLoader):
     def __init__(self,
                  edge_index: torch.Tensor,
+                 edge_features: torch.Tensor,
                  sizes: List[int],
                  node_idx: Optional[torch.Tensor] = None,
                  num_nodes: Optional[int] = None,
@@ -188,10 +190,10 @@ class NeighborSampler(torch.utils.data.DataLoader):
                  **kwargs):
 
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
-        edge_attr = torch.arange(edge_index.size(1))
+        # edge_attr = torch.arange(edge_index.size(1))
         adj = SparseTensor(row=edge_index[0],
                            col=edge_index[1],
-                           value=edge_attr,
+                           value=edge_features,
                            sparse_sizes=(N, N),
                            is_sorted=False)
         adj = adj.t() if flow == 'source_to_target' else adj
@@ -217,7 +219,7 @@ class NeighborSampler(torch.utils.data.DataLoader):
         n_id_offset = 0
         n_id_map = []
         edge_indeces = [[] for _ in self.sizes]
-        e_ids = [[] for _ in self.sizes]
+        e_feats = [[] for _ in self.sizes]
 
         for target_id in batch:
             n_id = target_id.unsqueeze(dim=0)
@@ -227,13 +229,13 @@ class NeighborSampler(torch.utils.data.DataLoader):
                 adj, n_id = self.adj.sample_adj(n_id, size, replace=False)
                 if self.flow == 'source_to_target':
                     adj = adj.t()
-                row, col, e_id = adj.coo()
+                row, col, e_feat = adj.coo()
                 row += n_id_offset
                 col += n_id_offset
                 size = adj.sparse_sizes()
                 edge_index = torch.stack([row, col], dim=0)
                 edge_indeces[i].append(edge_index)
-                e_ids[i].append(e_id)
+                e_feats[i].append(e_feat)
 
             is_target = n_id == target_id
             n_id_layers = torch.zeros_like(n_id)  # * len(n_id_targets)
@@ -250,16 +252,12 @@ class NeighborSampler(torch.utils.data.DataLoader):
         for i, size in enumerate(self.sizes):
             edge_index = torch.cat(edge_indeces[i], dim=-1)
             edge_index = reindex(sorted_idx, edge_index)
-            e_id = torch.cat(e_ids[i], dim=-1)
+            e_feat = torch.cat(e_feats[i], dim=0)
             M = edge_index[0].max().item() + 1
             N = edge_index[1].max().item() + 1
-            # M = (n_id_map[:, 2] >= i).sum().item()
-            # N = (n_id_map[:, 2] > i).sum().item()
             size = (M, N)
-            adjs.append(Adj(edge_index, e_id, size))
+            adjs.append(Adj(edge_index, e_feat, size))
 
-        # import ipdb
-        # ipdb.set_trace()
         if adjs[0].size[-1] != len(batch):
             import ipdb
             ipdb.set_trace()
@@ -275,3 +273,164 @@ def reindex(idx_map, edge_index):
         edge_reindex[edge_index == old_idx] = new_idx
 
     return edge_reindex
+
+
+class DataManager:
+    def __init__(self,
+                 gml_file,
+                 target,
+                 neighbor_sizes=[10, 10],
+                 batch_size=200,
+                 workers=1,
+                 target_node_lim=None):
+        # load graph
+        g = nx.readwrite.gml.read_gml(gml_file)
+        self.neighbor_steps = len(neighbor_sizes)
+
+        # featurize
+        target_node, target_prop = target.split(':')
+        self.target_node = target_node
+        self.g, self.target_nodes, self.targets, self.node_features, self.edge_feats = featurize(
+            g, target_node, target_prop)
+
+        if target_node_lim:
+            k = target_node_lim
+        else:
+            k = self.target_nodes.size(0) + 1
+        perm = torch.randperm(self.target_nodes.size(0))
+        subset_idx = perm[:k]
+        last_tng_id = int(0.8 * subset_idx.size(0))
+        tng_idx, _ = torch.sort(subset_idx[:last_tng_id])
+        val_idx, _ = torch.sort(subset_idx[last_tng_id:])
+
+        unique_targets, target_counts = torch.unique(self.targets, return_counts=True)
+        print('Data stats', len(self.targets), 100 * target_counts / float(len(self.targets)))
+        print('Tng len', len(tng_idx))
+        print('Val len', len(val_idx))
+        self.tng_target_nodes = self.target_nodes[tng_idx]
+        self.tng_targets = self.targets[tng_idx]
+        # FIXME: this is wrong, it includes edges to val nodes in the val set
+        self.val_target_nodes = self.target_nodes[val_idx]
+        self.val_targets = self.targets[val_idx]
+        edge_idx = torch.tensor(list(self.g.edges)).t().contiguous()
+        tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
+
+        # import ipdb
+        # ipdb.set_trace()
+        # neigbor_sizes = [3, 2]
+        # neigbor_sizes = [10, 10, 10, 10]
+        # neigbor_sizes = [-1, -1]
+        # neigbor_sizes = [10, 10]
+        # neigbor_sizes = [25]
+        batch_size = min(batch_size, len(self.tng_targets) // 4)
+        self.tng_loader = NeighborSampler(
+            # tng_edge_idx,
+            edge_idx,
+            self.edge_feats,
+            node_idx=self.tng_target_nodes,
+            sizes=neighbor_sizes,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=workers,
+            pin_memory=True,
+            drop_last=True,
+        )
+
+        self.val_loader = NeighborSampler(
+            edge_idx,
+            self.edge_feats,
+            node_idx=self.val_target_nodes,
+            sizes=neighbor_sizes,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=workers,
+            pin_memory=True,
+            drop_last=True,
+        )
+
+        self.graph_info = {
+            'in_nodes': {},
+        }
+        for node_type, node_props in self.node_features.items():
+            self.graph_info['in_nodes'][node_type] = {'in_size': node_props['x_in'].shape[1]}
+
+        self.graph_info['target_node'] = {
+            'in_size': self.node_features[target_node]['x_out'].shape[1]
+        }
+        self.graph_info['edges'] = {'in_size': self.edge_feats.shape[1]}
+
+    def filter_edge_index(self, edge_idx, node_idx):
+        mask = [
+            i for i, edge in enumerate(edge_idx.t())
+            if not (edge[0] in node_idx or edge[1] in node_idx)
+        ]
+        mask = torch.LongTensor(mask)
+        return edge_idx[:, mask]
+
+    def get_targets(self, n_id):
+        ind_map = self.get_ind_map(n_id, self.target_nodes)
+        return self.targets[ind_map[:, 2]]
+
+    def get_ind_map(self, n_id1, n_id2, ignore1=[]):
+        ind_map = []
+        for i, id in enumerate(n_id1):
+            if id in n_id2 and i not in ignore1:
+                t = torch.tensor([i, id, torch.nonzero(n_id2 == id, as_tuple=False).squeeze()])
+                ind_map.append(t)
+        if len(ind_map) == 0:
+            return None
+        return torch.stack(ind_map)
+
+    def get_id_map(self, node_id):
+        node_map = {
+            node_type: {
+                'x': [],
+                'h_id': []
+            }
+            for node_type, node_props in self.node_features.items()
+        }
+        node_map.update({'target': {'x': [], 'h_id': []}})
+
+        for i, n_id_map in enumerate(node_id):
+            for node_type, node_props in self.node_features.items():
+                idx = torch.nonzero(n_id_map[0] == node_props['n_ids'], as_tuple=False)
+                if idx.shape[0] == 1:
+                    idx = idx.squeeze(dim=-1)
+                    if n_id_map[1] != 1:
+                        node_map[node_type]['h_id'].append(torch.tensor([i]))
+                        node_map[node_type]['x'].append(self.node_features[node_type]['x_in'][idx])
+                    else:
+                        node_map['target']['h_id'].append(torch.tensor([i]))
+                        node_map['target']['x'].append(self.node_features[node_type]['x_out'][idx])
+
+        for node_type, n_map in node_map.items():
+            node_map[node_type] = NodeMap(
+                torch.cat(node_map[node_type]['x']),
+                torch.cat(node_map[node_type]['h_id']),
+            )
+
+        return node_map
+
+
+class NodeMap(NamedTuple):
+    x: torch.Tensor
+    h_id: torch.Tensor
+
+    def to(self, *args, **kwargs):
+        return NodeMap(
+            self.x.to(*args, **kwargs),
+            self.h_id.to(*args, **kwargs),
+        )
+
+
+class Adj(NamedTuple):
+    edge_index: torch.Tensor
+    edge_features: torch.Tensor
+    size: Tuple[int, int]
+
+    def to(self, *args, **kwargs):
+        return Adj(
+            self.edge_index.to(*args, **kwargs),
+            self.edge_features.to(*args, **kwargs),
+            self.size,
+        )

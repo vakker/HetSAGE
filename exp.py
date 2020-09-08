@@ -1,19 +1,11 @@
 import argparse
-import json
-import random
-from os import path as osp
 
-import ipdb
-import matplotlib.pyplot as plt
-import networkx as nx
-import numpy as np
-import pandas as pd
 import torch
 import torch.nn.functional as F
-import yaml
 from tqdm import tqdm
 
 import torch_geometric
+from hetsage.data import DataManager
 from hetsage.model import Model
 from hetsage.utils import init_random
 
@@ -23,9 +15,9 @@ def zero_grad(model):
         p.grad = None
 
 
-def run_iter(model, optimizer, device):
+def run_iter(data_manager, model, optimizer, device):
     metrics = {}
-    loss, acc = _run_iter(model, model.tng_loader, optimizer, device=device)
+    loss, acc = _run_iter(model, data_manager, data_manager.tng_loader, optimizer, device=device)
     metrics['tng-loss'] = loss
     metrics['tng-acc'] = acc
 
@@ -33,14 +25,14 @@ def run_iter(model, optimizer, device):
         # loss, acc = _run_iter(model, model.tng_loader, device=device)
         # metrics['tng2-loss'] = loss
         # metrics['tng2-acc'] = acc
-        loss, acc = _run_iter(model, model.val_loader, device=device)
+        loss, acc = _run_iter(model, data_manager, data_manager.val_loader, device=device)
         metrics['val-loss'] = loss
         metrics['val-acc'] = acc
 
     return metrics
 
 
-def _run_iter(model, data_loader, optimizer=None, device='cpu'):
+def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
     if optimizer is not None:
         model.train()
     else:
@@ -49,21 +41,18 @@ def _run_iter(model, data_loader, optimizer=None, device='cpu'):
     total_loss = 0
     total_correct = 0
     total_nodes = 0
-    i = 0
     for batch_size, n_id, adjs in tqdm(data_loader):
-        # import ipdb; ipdb.set_trace()
-        # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         if isinstance(adjs, torch_geometric.data.sampler.Adj):
             adjs = [adjs]
         adjs = [adj.to(device) for adj in adjs]
-        n_id = n_id.to(device)
-        targets = model.get_targets(n_id[:batch_size, 0])
-        # targets = model.get_targets(n_id[torch.nonzero(n_id[:, 1] == 1,
-        #                                                as_tuple=False).squeeze()][:, 0])
+        node_map = data_manager.get_id_map(n_id)
+        node_map = {k: v.to(device) for k, v in node_map.items()}
+        targets = data_manager.get_targets(n_id[:batch_size, 0])
+        targets = targets.to(device)
         if optimizer is not None:
             # zero_grad(model)
             optimizer.zero_grad()
-        out = model(n_id, adjs)
+        out = model(node_map, adjs)
         loss = F.nll_loss(F.log_softmax(out, dim=-1), targets)
         if optimizer is not None:
             loss.backward()
@@ -71,17 +60,7 @@ def _run_iter(model, data_loader, optimizer=None, device='cpu'):
 
         total_loss += float(loss.detach()) * batch_size
 
-        # import ipdb; ipdb.set_trace()
-        # out_np = out.cpu().to_numpy()
         y_pred = torch.argmax(out.detach(), dim=-1)
-        # if i >= 0:
-        #     print(i)
-        #     print(n_id[:batch_size, 0])
-        #     print(adjs[0].edge_index.t())
-        #     print(out)
-        #     print(targets)
-        #     print(y_pred)
-        # i += 1
         total_correct += float((y_pred == targets).sum())
         total_nodes += batch_size
 
@@ -109,21 +88,18 @@ def _run_iter(model, data_loader, optimizer=None, device='cpu'):
 
 def main(args):
     init_random()
-    # load graph
-    g = nx.readwrite.gml.read_gml(args.gml)
 
     if args.use_gpu:
         device = torch.device('cuda:0')
     else:
         device = torch.device('cpu')
 
-    model = Model(g, args.target, device=device)
+    data_manager = DataManager(args.gml, args.target, workers=0)
+    model = Model(data_manager.graph_info, data_manager.neighbor_steps)
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-
-    model.train()
     for epoch in range(1, 1 + args.max_epochs):
-        metrics = run_iter(model, optimizer, device=device)
+        metrics = run_iter(data_manager, model, optimizer, device=device)
         tng_loss = metrics['tng-loss']
         tng_acc = metrics['tng-acc']
         # tng2_loss = metrics['tng2-loss']
