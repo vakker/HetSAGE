@@ -22,7 +22,7 @@ tables:
 
 rules:
   - "in_drug(A, D) :- atom(A, D, _)"
-  - "bond_sym(A1, A2) :- bond(A1, A2, BT);  bond(A2, A1, BT)"
+  - "bond_sym(A1, A2, BT) :- bond(A1, A2, BT);  bond(A2, A1, BT)"
   # - "charge(A, C) :- atom(A, _, _, C)"
   - "element(A, E) :- atom(A, _, E)"
 
@@ -33,11 +33,17 @@ types:
 
 properties:
   # - ['charge(A,C)', ['charge', 'A', 'C'], False]
-  - ['element(A,E)', ['element', 'A', 'E'], True]
-  - ['drug(D,A)', ['active', 'D', 'A'], True]
+  - ['element(A,E)', ['element', 'A', 'E'], 'single_cat']
+  - ['drug(D,A)', ['active', 'D', 'A'], 'single_cat']
 
 connections:
-  - ['bond_sym(A1,A2)', ['bond_sym', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 1)', ['bond_sym_1', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 2)', ['bond_sym_2', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 3)', ['bond_sym_3', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 4)', ['bond_sym_4', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 5)', ['bond_sym_5', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 6)', ['bond_sym_6', 'A1', 'A2']]
+  - ['bond_sym(A1,A2, 7)', ['bond_sym_7', 'A1', 'A2']]
   - ['in_drug(A,D)', ['in_drug1', 'A', 'D']]
-  - ['in_drug(A,D)', ['in_drug2', 'D', 'A']]
+  # - ['in_drug(A,D)', ['in_drug2', 'D', 'A']]
   # - ['element(A,E)', ['element', 'A', 'E']]
