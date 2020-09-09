@@ -10,10 +10,6 @@ import torch
 from torch_sparse import SparseTensor
 from tqdm import tqdm
 
-import torch_geometric
-from torch_geometric.utils import (contains_isolated_nodes,
-                                   contains_self_loops, is_undirected)
-
 tensor = torch.FloatTensor
 
 
@@ -24,7 +20,7 @@ def get_props(g):
     }
 
 
-def featurize(g, target_node, target_prop):
+def featurize(g, target_node, target_prop, include_target_label=True):
     g = nx.convert_node_labels_to_integers(g)
     edge_cats = set()
     for n1, n2, data in tqdm(g.edges(data=True)):
@@ -68,7 +64,6 @@ def featurize(g, target_node, target_prop):
                 'multi_cat': multi_cat,
             }
 
-    # feature_mats = {}
     for nt in features:
         for pc, cats in features[nt]['single_cat'].items():
             features[nt]['single_cat'][pc] = sorted(list(cats))
@@ -105,31 +100,19 @@ def featurize(g, target_node, target_prop):
             else:
                 raise ValueError(f'{target_prop} is not a property')
             target_nodes.append(n)
-            # targets.append(torch.tensor(y))
             targets.append(torch.nonzero(torch.tensor(y) == 1, as_tuple=False).squeeze())
         else:
             y = []
-        # g.nodes[n]['x_in'] = torch.tensor(np.concatenate([x_p, x_c, y]))
-        # g.nodes[n]['x_out'] = torch.tensor(np.concatenate([x_p, x_c]))
-        # g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_c]))
-        g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc]))
-        # g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc, y]))
-        # print(
-        #     get_tensor(np.concatenate([x_p, x_sc, x_mc])).shape,
-        #     get_tensor(np.concatenate([x_p, x_sc, x_mc, y])).shape,
-        # )
-        # g.nodes[n]['x_in'] = get_tensor(np.concatenate([y]))
+        if include_target_label:
+            g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc, y]))
+        else:
+            g.nodes[n]['x_in'] = get_tensor(np.concatenate([x_p, x_sc, x_mc]))
         g.nodes[n]['x_out'] = get_tensor(np.concatenate([x_p, x_sc, x_mc]))
         g.nodes[n]['y'] = torch.tensor(y)
-        # features[nt]['x_in'].append(torch.tensor([n]).float())
         features[nt]['x_in'].append(g.nodes[n]['x_in'])
-        # features[nt]['x_in'].append(get_tensor(np.concatenate([x_p, x_c, y])))
         features[nt]['x_out'].append(g.nodes[n]['x_out'])
         features[nt]['y'].append(g.nodes[n]['y'])
         features[nt]['n_ids'].append(torch.tensor(n))
-        # features[nt]['x_in_size'] = g.nodes[n]['x_in'].shape[0]
-        # features[nt]['x_out_size'] = g.nodes[n]['x_out'].shape[0]
-        # features[nt]['y_size'] = g.nodes[n]['y'].shape[0]
 
     for nt in features:
         features[nt]['x_in'] = torch.stack(features[nt]['x_in'])
@@ -190,7 +173,6 @@ class NeighborSampler(torch.utils.data.DataLoader):
                  **kwargs):
 
         N = int(edge_index.max() + 1) if num_nodes is None else num_nodes
-        # edge_attr = torch.arange(edge_index.size(1))
         adj = SparseTensor(row=edge_index[0],
                            col=edge_index[1],
                            value=edge_features,
@@ -279,7 +261,8 @@ class DataManager:
     def __init__(self,
                  gml_file,
                  target,
-                 neighbor_sizes=[10, 10],
+                 include_target_label=True,
+                 neighbor_sizes=[20, 20],
                  batch_size=200,
                  workers=1,
                  target_node_lim=None):
@@ -291,7 +274,7 @@ class DataManager:
         target_node, target_prop = target.split(':')
         self.target_node = target_node
         self.g, self.target_nodes, self.targets, self.node_features, self.edge_feats = featurize(
-            g, target_node, target_prop)
+            g, target_node, target_prop, include_target_label)
 
         if target_node_lim:
             k = target_node_lim
@@ -355,7 +338,8 @@ class DataManager:
             self.graph_info['in_nodes'][node_type] = {'in_size': node_props['x_in'].shape[1]}
 
         self.graph_info['target_node'] = {
-            'in_size': self.node_features[target_node]['x_out'].shape[1]
+            'in_size': self.node_features[target_node]['x_out'].shape[1],
+            'out_size': self.node_features[target_node]['y'].shape[1]
         }
         self.graph_info['edges'] = {'in_size': self.edge_feats.shape[1]}
 
@@ -403,13 +387,16 @@ class DataManager:
                         node_map['target']['h_id'].append(torch.tensor([i]))
                         node_map['target']['x'].append(self.node_features[node_type]['x_out'][idx])
 
+        node_map_out = {}
         for node_type, n_map in node_map.items():
-            node_map[node_type] = NodeMap(
+            if len(node_map[node_type]['x']) == 0:
+                continue
+            node_map_out[node_type] = NodeMap(
                 torch.cat(node_map[node_type]['x']),
                 torch.cat(node_map[node_type]['h_id']),
             )
 
-        return node_map
+        return node_map_out
 
 
 class NodeMap(NamedTuple):
