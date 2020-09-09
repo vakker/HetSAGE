@@ -58,8 +58,6 @@ class Model(nn.Module):
                                  hidden_sizes=emb_hidden,
                                  output_size=embed_size)
 
-        output_size = graph_info['target_node']['in_size']
-
         root_weight = True
         module_list = [
             NNConv(embed_size,
@@ -86,7 +84,9 @@ class Model(nn.Module):
 
         self.convs = nn.ModuleList(module_list)
         self.bns = nn.ModuleList(bns)
-        self.lin1 = torch.nn.Linear(hidden_size, output_size)
+
+        # output_size = graph_info['target_node']['in_size']
+        # self.lin1 = torch.nn.Linear(hidden_size, output_size)
 
     @property
     def device(self):
