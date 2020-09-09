@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import torch
 import torch.nn.functional as F
@@ -41,7 +42,12 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
     total_loss = 0
     total_correct = 0
     total_nodes = 0
+    timing = {'forward': 0, 'backward': 0, 'data': 0}
+
+    data_time = time.time()
     for batch_size, n_id, adjs in tqdm(data_loader):
+        timing['data'] += time.time() - data_time
+
         if isinstance(adjs, torch_geometric.data.sampler.Adj):
             adjs = [adjs]
         adjs = [adj.to(device) for adj in adjs]
@@ -52,11 +58,15 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
         if optimizer is not None:
             # zero_grad(model)
             optimizer.zero_grad()
+        f_time = time.time()
         out = model(node_map, adjs)
+        timing['forward'] += time.time() - f_time
         loss = F.nll_loss(F.log_softmax(out, dim=-1), targets)
         if optimizer is not None:
+            b_time = time.time()
             loss.backward()
             optimizer.step()
+            timing['backward'] += time.time() - b_time
 
         total_loss += float(loss.detach()) * batch_size
 
@@ -64,9 +74,12 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
         total_correct += float((y_pred == targets).sum())
         total_nodes += batch_size
 
+        data_time = time.time()
+
     loss = total_loss / total_nodes
     approx_acc = total_correct / total_nodes
 
+    # print('Timing stats:', timing)
     return loss, approx_acc
 
 
@@ -94,8 +107,19 @@ def main(args):
     else:
         device = torch.device('cpu')
 
-    data_manager = DataManager(args.gml, args.target, workers=0)
-    model = Model(data_manager.graph_info, data_manager.neighbor_steps)
+    data_manager = DataManager(args.gml,
+                               args.target,
+                               include_target_label=not args.no_label,
+                               # neighbor_sizes=[10, 10, 10, 10],
+                               neighbor_sizes=[10, 10],
+                               workers=args.workers)
+    model = Model(
+        data_manager.graph_info,
+        data_manager.neighbor_steps,
+        embed_size=16,
+        emb_hidden=[256, 64],
+        hidden_size=32,
+    )
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
     for epoch in range(1, 1 + args.max_epochs):
@@ -123,7 +147,9 @@ if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument('--gml')
     PARSER.add_argument('--target')
+    PARSER.add_argument('--workers', type=int, default=2)
     PARSER.add_argument('--use-gpu', action='store_true')
+    PARSER.add_argument('--no-label', action='store_true')
     PARSER.add_argument('--max-epochs', type=int)
 
     ARGS = PARSER.parse_args()
