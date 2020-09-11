@@ -225,11 +225,12 @@ class NeighborSampler(torch.utils.data.DataLoader):
 
         n_id_map = torch.cat(n_id_map)
         _, sorted_idx = torch.sort(n_id_map[:, 2], descending=True)
+        _, sorted_idx_inv = torch.sort(sorted_idx)
         n_id_map = n_id_map[sorted_idx]
         adjs = []
         for i, size in enumerate(self.sizes):
             edge_index = torch.cat(edge_indeces[i], dim=-1)
-            edge_index = reindex(sorted_idx, edge_index)
+            edge_index = reindex(sorted_idx, sorted_idx_inv, edge_index)
             e_feat = torch.cat(e_feats[i], dim=0)
             M = edge_index[0].max().item() + 1
             N = edge_index[1].max().item() + 1
@@ -242,10 +243,11 @@ class NeighborSampler(torch.utils.data.DataLoader):
         return '{}(sizes={})'.format(self.__class__.__name__, self.sizes)
 
 
-def reindex(idx_map, edge_index):
+def reindex(idx_map, idx_map_inv, edge_index):
     edge_reindex = torch.ones_like(edge_index) * -1
-    for new_idx, old_idx in enumerate(idx_map):
-        edge_reindex[edge_index == old_idx] = new_idx
+    for i in range(edge_reindex.shape[1]):
+        edge_reindex[0, i] = idx_map_inv[edge_index[0, i]]
+        edge_reindex[1, i] = idx_map_inv[edge_index[1, i]]
 
     return edge_reindex
 
