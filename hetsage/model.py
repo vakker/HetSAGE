@@ -2,12 +2,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-
 from torch_geometric.nn import NNConv
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size, activation='ReLU'):
+    def __init__(self, input_size, hidden_sizes, output_size, activation='LeakyReLU'):
         super().__init__()
 
         if not isinstance(hidden_sizes, list):
@@ -43,7 +42,8 @@ class Model(nn.Module):
                  neighbor_steps,
                  embed_size=256,
                  emb_hidden=[256, 256],
-                 hidden_size=256):
+                 hidden_size=256,
+                 activation='LeakyReLU'):
         super().__init__()
 
         self.embed_size = embed_size
@@ -51,12 +51,14 @@ class Model(nn.Module):
         for node_type, node_props in graph_info['in_nodes'].items():
             embedders[node_type] = MLP(input_size=node_props['in_size'],
                                        hidden_sizes=emb_hidden,
-                                       output_size=embed_size)
+                                       output_size=embed_size,
+                                       activation=activation)
         self.embedders = nn.ModuleDict(embedders)
 
         self.embedders_out = MLP(input_size=graph_info['target_node']['in_size'],
                                  hidden_sizes=emb_hidden,
-                                 output_size=embed_size)
+                                 output_size=embed_size,
+                                 activation=activation)
 
         root_weight = True
         module_list = [
@@ -64,7 +66,8 @@ class Model(nn.Module):
                    hidden_size,
                    MLP(input_size=graph_info['edges']['in_size'],
                        hidden_sizes=[hidden_size, hidden_size],
-                       output_size=hidden_size * embed_size),
+                       output_size=hidden_size * embed_size,
+                       activation=activation),
                    aggr='mean',
                    root_weight=root_weight,
                    bias=True)
@@ -76,7 +79,8 @@ class Model(nn.Module):
                        hidden_size,
                        MLP(input_size=graph_info['edges']['in_size'],
                            hidden_sizes=[hidden_size, hidden_size],
-                           output_size=hidden_size * hidden_size),
+                           output_size=hidden_size * hidden_size,
+                           activation=activation),
                        aggr='mean',
                        root_weight=root_weight,
                        bias=True))
@@ -85,8 +89,10 @@ class Model(nn.Module):
         self.convs = nn.ModuleList(module_list)
         self.bns = nn.ModuleList(bns)
 
-        # output_size = graph_info['target_node']['in_size']
-        # self.lin1 = torch.nn.Linear(hidden_size, output_size)
+        self.act = getattr(torch.nn, activation)()
+
+        output_size = graph_info['target_node']['out_size']
+        self.lin1 = torch.nn.Linear(hidden_size, output_size)
 
     @property
     def device(self):
@@ -107,13 +113,12 @@ class Model(nn.Module):
         for i, (edge_index, e_feat, size) in enumerate(adjs):
             h_target = h[:size[1]]
             h = self.convs[i]((h, h_target), edge_index, e_feat)
-            h = F.relu(h)
+            h = self.act(h)
             # h = self.bns[i](h)
             # out, h = self.gru(m.unsqueeze(0), h)
             # out = out.squeeze(0)
 
-        # h = F.relu(h)
-        # h = self.lin1(h)
-        # h = F.relu(h)
+        h = self.lin1(h)
+        h = self.act(h)
         # return F.log_softmax(h, dim=-1)
         return h
