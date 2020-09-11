@@ -252,7 +252,7 @@ def reindex(idx_map, edge_index):
 
 class DataManager:
     def __init__(self,
-                 gml_file,
+                 graph_file,
                  target,
                  include_target_label=True,
                  neighbor_sizes=[20, 20],
@@ -260,7 +260,7 @@ class DataManager:
                  workers=1,
                  target_node_lim=None):
         # load graph
-        g = nx.readwrite.gml.read_gml(gml_file)
+        g = nx.nx.read_gpickle(graph_file)
         self.neighbor_steps = len(neighbor_sizes)
 
         # featurize

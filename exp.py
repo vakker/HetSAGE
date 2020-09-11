@@ -119,13 +119,12 @@ def main(args):
 
     device = torch.device(args.device)
 
-    data_manager = DataManager(
-        args.gml,
-        args.target,
-        batch_size=args.batch_size,
-        include_target_label=not args.no_label,
-        neighbor_sizes=[10, 10],
-        workers=args.workers)
+    data_manager = DataManager(args.graph,
+                               args.target,
+                               batch_size=args.batch_size,
+                               include_target_label=not args.no_label,
+                               neighbor_sizes=[50, 50],
+                               workers=args.workers)
     model = Model(
         data_manager.graph_info,
         data_manager.neighbor_steps,
@@ -148,7 +147,7 @@ def main(args):
 
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
-    PARSER.add_argument('--gml')
+    PARSER.add_argument('--graph')
     PARSER.add_argument('--target')
     PARSER.add_argument('--workers', type=int, default=2)
     PARSER.add_argument('--activation', default='LeakyReLU')
