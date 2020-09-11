@@ -3,12 +3,17 @@ import time
 
 import torch
 import torch.nn.functional as F
+import torch_geometric
 from tqdm import tqdm
 
-import torch_geometric
 from hetsage.data import DataManager
 from hetsage.model import Model
 from hetsage.utils import init_random
+
+
+def print_grad(model):
+    for p in model.parameters():
+        print(p.name, p.grad)
 
 
 def zero_grad(model):
@@ -16,20 +21,26 @@ def zero_grad(model):
         p.grad = None
 
 
-def run_iter(data_manager, model, optimizer, device):
-    metrics = {}
+def run_iter(data_manager, model, optimizer, device, initial=False):
+    loss_all = {}
+    acc_all = {}
+
+    if initial:
+        with torch.no_grad():
+            loss, acc = _run_iter(model, data_manager, data_manager.val_loader, device=device)
+            loss_all['val0'] = loss
+            acc_all['val0'] = acc
+
     loss, acc = _run_iter(model, data_manager, data_manager.tng_loader, optimizer, device=device)
-    metrics['tng-loss'] = loss
-    metrics['tng-acc'] = acc
+    loss_all['tng'] = loss
+    acc_all['tng'] = acc
 
     with torch.no_grad():
-        # loss, acc = _run_iter(model, model.tng_loader, device=device)
-        # metrics['tng2-loss'] = loss
-        # metrics['tng2-acc'] = acc
         loss, acc = _run_iter(model, data_manager, data_manager.val_loader, device=device)
-        metrics['val-loss'] = loss
-        metrics['val-acc'] = acc
+        loss_all['val'] = loss
+        acc_all['val'] = acc
 
+    metrics = {'loss': loss_all, 'acc': acc_all}
     return metrics
 
 
@@ -56,6 +67,7 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
         targets = data_manager.get_targets(n_id[:batch_size, 0])
         targets = targets.to(device)
         if optimizer is not None:
+            # print_grad(model)
             # zero_grad(model)
             optimizer.zero_grad()
         f_time = time.time()
@@ -68,9 +80,12 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
             optimizer.step()
             timing['backward'] += time.time() - b_time
 
+        # print(float(loss.detach()))
         total_loss += float(loss.detach()) * batch_size
 
         y_pred = torch.argmax(out.detach(), dim=-1)
+        # print(y_pred)
+        # print(targets)
         total_correct += float((y_pred == targets).sum())
         total_nodes += batch_size
 
@@ -102,17 +117,15 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
 def main(args):
     init_random()
 
-    if args.use_gpu:
-        device = torch.device('cuda:0')
-    else:
-        device = torch.device('cpu')
+    device = torch.device(args.device)
 
-    data_manager = DataManager(args.gml,
-                               args.target,
-                               include_target_label=not args.no_label,
-                               # neighbor_sizes=[10, 10, 10, 10],
-                               neighbor_sizes=[10, 10],
-                               workers=args.workers)
+    data_manager = DataManager(
+        args.gml,
+        args.target,
+        batch_size=args.batch_size,
+        include_target_label=not args.no_label,
+        neighbor_sizes=[10, 10],
+        workers=args.workers)
     model = Model(
         data_manager.graph_info,
         data_manager.neighbor_steps,
@@ -123,24 +136,14 @@ def main(args):
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
     for epoch in range(1, 1 + args.max_epochs):
-        metrics = run_iter(data_manager, model, optimizer, device=device)
-        tng_loss = metrics['tng-loss']
-        tng_acc = metrics['tng-acc']
-        # tng2_loss = metrics['tng2-loss']
-        # tng2_acc = metrics['tng2-acc']
-        val_loss = metrics['val-loss']
-        val_acc = metrics['val-acc']
+        metrics = run_iter(data_manager, model, optimizer, device=device, initial=epoch == 1)
         msg = ''
         msg += f'Epoch {epoch:02d}, '
-        msg += f'Tng loss: {tng_loss:.4f}, '
-        msg += f'Tng acc: {100*tng_acc:.2f}, '
-        # msg += f'Tng2 loss: {tng2_loss:.4f}, '
-        # msg += f'Tng2 acc: {100*tng2_acc:.2f}, '
-        msg += f'Val loss: {val_loss:.4f}, '
-        msg += f'Val acc: {100*val_acc:.2f}'
+        for s, v in metrics['acc'].items():
+            msg += f'{s} acc: {100*v:.2f}, '
+        for s, v in metrics['loss'].items():
+            msg += f'{s} loss: {v:.5f}, '
         print(msg)
-        # train_acc, val_acc, test_acc = test()
-        # print(f'Train: {train_acc:.4f}, Val: {val_acc:.4f}, ' f'Test: {test_acc:.4f}')
 
 
 if __name__ == '__main__':
@@ -148,7 +151,9 @@ if __name__ == '__main__':
     PARSER.add_argument('--gml')
     PARSER.add_argument('--target')
     PARSER.add_argument('--workers', type=int, default=2)
-    PARSER.add_argument('--use-gpu', action='store_true')
+    PARSER.add_argument('--activation', default='LeakyReLU')
+    PARSER.add_argument('--batch-size', type=int, default=200)
+    PARSER.add_argument('--device', default='cuda:0')
     PARSER.add_argument('--no-label', action='store_true')
     PARSER.add_argument('--max-epochs', type=int)
 
