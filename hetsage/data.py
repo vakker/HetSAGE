@@ -1,7 +1,3 @@
-import collections
-import copy
-import logging
-import re
 from typing import List, NamedTuple, Optional, Tuple
 
 import networkx as nx
