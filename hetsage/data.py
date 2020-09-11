@@ -240,9 +240,6 @@ class NeighborSampler(torch.utils.data.DataLoader):
             size = (M, N)
             adjs.append(Adj(edge_index, e_feat, size))
 
-        if adjs[0].size[-1] != len(batch):
-            import ipdb
-            ipdb.set_trace()
         return batch_size, n_id_map, adjs[::-1]
 
     def __repr__(self):
