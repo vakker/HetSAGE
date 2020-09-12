@@ -6,7 +6,12 @@ from torch_geometric.nn import NNConv
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_sizes, output_size, activation='LeakyReLU'):
+    def __init__(self,
+                 input_size,
+                 hidden_sizes,
+                 output_size,
+                 activation='LeakyReLU',
+                 final_act=False):
         super().__init__()
 
         if not isinstance(hidden_sizes, list):
@@ -23,7 +28,7 @@ class MLP(nn.Module):
             else:
                 output_feats = output_size
             layers.append(nn.Linear(hidden_sizes[i], output_feats))
-            if i < len(hidden_sizes) - 1:
+            if i < len(hidden_sizes) - 1 or final_act:
                 layers.append(act())
 
         self.layers = nn.Sequential(*layers)
