@@ -300,7 +300,7 @@ class DataManager:
         # neigbor_sizes = [-1, -1]
         # neigbor_sizes = [10, 10]
         # neigbor_sizes = [25]
-        batch_size = min(batch_size, len(self.tng_targets) // 4)
+        # batch_size = min(batch_size, len(self.tng_targets) // 4)
         self.tng_loader = NeighborSampler(
             # tng_edge_idx,
             edge_idx,
@@ -323,7 +323,7 @@ class DataManager:
             shuffle=False,
             num_workers=workers,
             pin_memory=True,
-            drop_last=True,
+            drop_last=False,
         )
 
         self.graph_info = {
