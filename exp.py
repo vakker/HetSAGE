@@ -13,7 +13,8 @@ from hetsage.utils import init_random
 
 def print_grad(model):
     for p in model.parameters():
-        print(p.name, p.grad)
+        if p is not None and p.grad is not None:
+            print(torch.norm(p.grad))
 
 
 def zero_grad(model):
@@ -149,6 +150,7 @@ if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument('--graph')
     PARSER.add_argument('--target')
+    PARSER.add_argument('--seed', type=int, default=0)
     PARSER.add_argument('--workers', type=int, default=2)
     PARSER.add_argument('--activation', default='LeakyReLU')
     PARSER.add_argument('--batch-size', type=int, default=200)
