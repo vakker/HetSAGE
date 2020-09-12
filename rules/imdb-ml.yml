@@ -17,7 +17,7 @@ tables:
     cols:
       directorid: director_
   movies:
-    pred_map: movie
+    pred_map: movie_base
     cols:
       movieid: movie_
       year: ''
@@ -32,46 +32,31 @@ tables:
       actorid: actor_
       movieid: movie_
   u2base:
-    pred_map: rating
+    pred_map: rating_base
     cols:
       userid: user_
       movieid: movie_
       rating: ''
 
 rules:
-  # - "target(A, drama) :- movie(A, _), genre(A, drama)"
-  # - "target(A, not_drama) :- movie(A, _), \\+ genre(A, drama)"
-  # - "movie_filt(A) :- target(A, _)"
-  # - "dummy(D) :- movie(M, _), string_concat('dummy_',M,D)"
-  # - "m2d(M, D) :- movie(M, _), string_concat('dummy_',M,D)"
-  # - "d2t(D, T) :- m2d(M, D), target(M, T)"
-  # - "director(A) :- director(A, _, _)"
-  # - "movie(A) :- movie(A, _, _, _)"
-  # - "role(A,M) :- role(A, M)"
+  - "rating(U,M,R) :- user(U,_,_), rating_base(U,M,R)"
+  - "movie(M,Y) :- movie_base(M,Y), rating(_,M,_)"
 
 types:
   - ['user(A, _, _)', ['user', 'A']]
   - ['actor(A, _)', ['actor', 'A']]
-  # - ['actor(_, G)', ['gender', 'G']]
   - ['director(A)', ['director', 'A']]
-  # - ['movie(A, _)', ['movie', 'A']]
   - ['movie(A, _)', ['movie', 'A']]
-  # - ['m2d(_, D)', ['dummy', 'D']]
-  # - ['target(_, G)', ['genre', 'G']]
 
 properties:
-  - ['actor(A,G)', ['gender', 'A', 'G'], 'single_cat']
-  - ['user(U, A, _)', ['age', 'U', 'A'], 'prop']
+  # - ['user(U, A, _)', ['age', 'U', 'A'], 'prop']
   - ['user(U, _, G)', ['gender', 'U', 'G'], 'single_cat']
-  # - ['target(M, G)', ['genre2', 'M', 'G'], true]
-  # - ['actor(A,G)', ['gender', 'G', 'G'], true]
-  # - ['actor(A,_)', ['actor_id', 'A', 'A'], true]
+  - ['actor(A, G)', ['gender', 'A', 'G'], 'single_cat']
+  # - ['user(U,_,_)', ['u_id', 'U', 'U'], 'single_cat']
   # - ['director(D)', ['dir_id', 'D', 'D'], true]
   # - ['movie(M,_)', ['movie_id', 'M', 'M'], true]
 
 connections:
-  # - ['target(M,G)', ['genre1', 'M', 'G']]
-  # - ['target(M,G)', ['genre2', 'G', 'M']]
   - ['has_role(A,M)', ['has_role_1', 'A', 'M']]
   - ['has_role(A,M)', ['has_role_2', 'M', 'A']]
   - ['directed(D,M)', ['directed_1', 'D', 'M']]
@@ -86,8 +71,8 @@ connections:
   - ['rating(U, M, 3)', ['r3_2', 'M', 'U']]
   - ['rating(U, M, 4)', ['r4_2', 'M', 'U']]
   - ['rating(U, M, 5)', ['r5_2', 'M', 'U']]
-  # - ['m2d(M,D)', ['m2d1', 'M', 'D']]
-  # - ['m2d(M,D)', ['m2d2', 'D', 'M']]
+  # - ['dummy(U,D,_)', ['u2d1', 'U', 'D']]
+  # - ['dummy(U,D,_)', ['u2d2', 'D', 'U']]
   # - ['d2t(D,T)', ['d2t1', 'T', 'D']]
   # - ['d2t(D,T)', ['d2t2', 'D', 'T']]
   # - ['actor(A,G)', ['gender', 'A', 'G']]

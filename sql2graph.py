@@ -1,15 +1,10 @@
 import argparse
-import json
-from os import path as osp
 
-import ipdb
-import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import yaml
-from tqdm import tqdm
-
 from pyswip import Prolog
+from tqdm import tqdm
 
 
 def query_results(p, query):
@@ -24,7 +19,6 @@ def query_results(p, query):
 
 
 def clear_str(string):
-    # TODO: this breaks negative numbers
     str_map = [
         ['-', '_'],
         [' ', ''],
@@ -44,18 +38,15 @@ def main(args):
 
     f = open(opts['sql_db'] + '.pl', 'w')
     prolog = Prolog()
-    # pred_map = opts['pred_map']
     for t, df in tqdm(tables.items(), desc='Proc tables'):
-        # import ipdb; ipdb.set_trace()
         pred_name = opts['tables'][t].get('pred_map', t)
-        # t2 = pred_map.get(t, t)
-        # prefixes = opts.get('prefix', {}).get(t, {})
         cols = opts['tables'][t]['cols']
         df = df.loc[:, list(cols)]
         for col, pref in tqdm(cols.items(), desc='Proc cols', leave=False):
-            df[col] = df[col].apply(lambda x: pref + str(x))
+            if isinstance(pref, str):
+                df[col] = df[col].apply(lambda x: clear_str(pref + str(x)))
         for idx, data in tqdm(df.iterrows(), desc='Proc rows', total=len(df), leave=False):
-            pred_args = ','.join([clear_str(str(v)) for v in data.values.tolist()])
+            pred_args = ','.join([str(v) for v in data.values.tolist()])
             to_ass = f'{pred_name}({pred_args})'
             prolog.assertz(to_ass)
             f.write(to_ass + '.\n')
@@ -73,7 +64,6 @@ def main(args):
 
     g = nx.MultiDiGraph()
     print('Getting types')
-    # ipdb.set_trace()
     for q, res in query_results(prolog, types):
         # print(res)
         if len(q[1]) == 2:
@@ -86,7 +76,6 @@ def main(args):
             # print(f'Node already in graph: {node}')
             pass
         else:
-            # g.add_node(node)
             g.add_node(node, nodetype=node_type)
 
     print('Getting props')
@@ -119,11 +108,9 @@ def main(args):
             g.nodes[node][prop_type] = props
         else:
             print(f'Node not in graph: {node}')
-            # g.add_node(node, **{prop: prop_value})
 
     print('Getting connections')
     for q, res in query_results(prolog, connections):
-        # print(res)
         if len(q[1]) == 3:
             edge_label = q[1][0]
             node_1 = res[q[1][1]]
@@ -139,19 +126,15 @@ def main(args):
             continue
         g.add_edge(node_1, node_2, label=edge_label)
 
-    # nx.draw_spring(g, with_labels=True)
-    # plt.show()
-
-    # import ipdb; ipdb.set_trace()
-    # ds_name = osp.basename(opts['sql_db'])[0]
-    # json.dump(nx.readwrite.json_graph.cytoscape_data(g), open(ds_name + '.cyjs', 'w'))
-
-    nx.readwrite.gml.write_gml(g, opts['sql_db'] + '.gml')
+    nx.write_gpickle(g, opts['sql_db'] + ".gpickle")
+    if args.gml:
+        nx.readwrite.gml.write_gml(g, opts['sql_db'] + '.gml')
 
 
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
     PARSER.add_argument('--opts')
+    PARSER.add_argument('--gml', action='store_true')
 
     ARGS = PARSER.parse_args()
     main(ARGS)

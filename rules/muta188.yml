@@ -7,7 +7,7 @@ tables:
       id: atom_
       drug_id: drug_
       element: ""
-      # charge: ""
+      charge:
   bonds:
     pred_map: bond
     cols:
@@ -21,20 +21,21 @@ tables:
       active: ""
 
 rules:
-  - "in_drug(A, D) :- atom(A, D, _)"
+  - "in_drug(A, D) :- atom(A, D, _, _)"
   - "bond_sym(A1, A2, BT) :- bond(A1, A2, BT);  bond(A2, A1, BT)"
   # - "charge(A, C) :- atom(A, _, _, C)"
-  - "element(A, E) :- atom(A, _, E)"
+  - "element(A, E) :- atom(A, _, E, _)"
 
 types:
-  - ['atom(A, _, _)', ['atom', 'A']]
+  - ['atom(A, _, _, _)', ['atom', 'A']]
   # - ['element(A, E)', ['element', 'E']]
   - ['drug(D, _)', ['drug', 'D']]
 
 properties:
-  # - ['charge(A,C)', ['charge', 'A', 'C'], False]
+  # - ['atom(A, _, _, C)', ['charge', 'A', 'C'], 'prop']
   - ['element(A,E)', ['element', 'A', 'E'], 'single_cat']
   - ['drug(D,A)', ['active', 'D', 'A'], 'single_cat']
+  # - ['drug(D,_)', ['d_id', 'D', 'D'], 'single_cat']
 
 connections:
   - ['bond_sym(A1,A2, 1)', ['bond_sym_1', 'A1', 'A2']]
