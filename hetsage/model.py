@@ -1,8 +1,14 @@
+from typing import Callable, Tuple, Union
+
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
-from torch_geometric.nn import NNConv
+from torch import Tensor, nn
+from torch.nn import Parameter
+from torch_geometric.nn.conv import MessagePassing
+from torch_geometric.typing import OptPairTensor, OptTensor, Size
+
+from .data import Adj
 
 
 class MLP(nn.Module):
@@ -45,8 +51,8 @@ class Model(nn.Module):
     def __init__(self,
                  graph_info,
                  neighbor_steps,
-                 embed_size=256,
                  emb_hidden=[256, 256],
+                 embed_size=256,
                  hidden_size=256,
                  activation='LeakyReLU'):
         super().__init__()
@@ -57,38 +63,54 @@ class Model(nn.Module):
             embedders[node_type] = MLP(input_size=node_props['in_size'],
                                        hidden_sizes=emb_hidden,
                                        output_size=embed_size,
-                                       activation=activation)
+                                       activation=activation,
+                                       final_act=True)
         self.embedders = nn.ModuleDict(embedders)
 
         self.embedders_out = MLP(input_size=graph_info['target_node']['in_size'],
                                  hidden_sizes=emb_hidden,
                                  output_size=embed_size,
-                                 activation=activation)
+                                 activation=activation,
+                                 final_act=True)
 
-        root_weight = True
+        root_layer = True
         module_list = [
-            NNConv(embed_size,
-                   hidden_size,
-                   MLP(input_size=graph_info['edges']['in_size'],
-                       hidden_sizes=[hidden_size, hidden_size],
-                       output_size=hidden_size * embed_size,
-                       activation=activation),
-                   aggr='mean',
-                   root_weight=root_weight,
-                   bias=True)
+            NNConv(
+                embed_size,
+                hidden_size,
+                edge_nn=MLP(input_size=graph_info['edges']['in_size'],
+                            hidden_sizes=[hidden_size, hidden_size],
+                            output_size=hidden_size * embed_size,
+                            activation=activation,
+                            final_act=True),
+                node_nn=MLP(input_size=hidden_size + embed_size,
+                            hidden_sizes=[hidden_size, hidden_size],
+                            output_size=hidden_size,
+                            activation=activation,
+                            final_act=False),
+                aggr='mean',
+                root_layer=root_layer,
+            )
         ]
         bns = [torch.nn.BatchNorm1d(hidden_size)]
         for s in range(1, neighbor_steps):
             module_list.append(
-                NNConv(hidden_size,
-                       hidden_size,
-                       MLP(input_size=graph_info['edges']['in_size'],
-                           hidden_sizes=[hidden_size, hidden_size],
-                           output_size=hidden_size * hidden_size,
-                           activation=activation),
-                       aggr='mean',
-                       root_weight=root_weight,
-                       bias=True))
+                NNConv(
+                    hidden_size,
+                    hidden_size,
+                    edge_nn=MLP(input_size=graph_info['edges']['in_size'],
+                                hidden_sizes=[hidden_size, hidden_size],
+                                output_size=hidden_size * hidden_size,
+                                activation=activation,
+                                final_act=True),
+                    node_nn=MLP(input_size=hidden_size * 2,
+                                hidden_sizes=[hidden_size, hidden_size],
+                                output_size=hidden_size,
+                                activation=activation,
+                                final_act=False),
+                    aggr='mean',
+                    root_layer=root_layer,
+                ))
             bns.append(torch.nn.BatchNorm1d(hidden_size))
 
         self.convs = nn.ModuleList(module_list)
@@ -97,7 +119,8 @@ class Model(nn.Module):
         self.act = getattr(torch.nn, activation)()
 
         output_size = graph_info['target_node']['out_size']
-        self.lin1 = torch.nn.Linear(hidden_size, output_size)
+        self.lin1 = torch.nn.Linear(hidden_size, hidden_size)
+        self.lin2 = torch.nn.Linear(hidden_size, output_size)
 
     @property
     def device(self):
@@ -118,12 +141,87 @@ class Model(nn.Module):
         for i, (edge_index, e_feat, size) in enumerate(adjs):
             h_target = h[:size[1]]
             h = self.convs[i]((h, h_target), edge_index, e_feat)
-            h = self.act(h)
+            # h = self.act(h)
+            # print('before', h)
             # h = self.bns[i](h)
+            # print('after', h)
             # out, h = self.gru(m.unsqueeze(0), h)
             # out = out.squeeze(0)
 
         h = self.lin1(h)
         h = self.act(h)
-        # return F.log_softmax(h, dim=-1)
+        h = self.lin2(h)
         return h
+
+
+class NNConv(MessagePassing):
+    def __init__(self,
+                 in_channels: Union[int, Tuple[int, int]],
+                 out_channels: int,
+                 node_nn: Callable,
+                 edge_nn: Callable,
+                 aggr: str = 'add',
+                 root_layer: bool = True,
+                 **kwargs):
+        super().__init__(aggr=aggr, **kwargs)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.edge_nn = edge_nn
+        self.node_nn = node_nn
+        self.aggr = aggr
+
+        if isinstance(in_channels, int):
+            in_channels = (in_channels, in_channels)
+
+        self.in_channels_l = in_channels[0]
+
+        if root_layer:
+            self.root = nn.Linear(in_channels[1], out_channels)
+        else:
+            self.root = None
+
+        self.bn = torch.nn.BatchNorm1d(out_channels + in_channels[1])
+        # self.reset_parameters()
+
+    # def reset_parameters(self):
+    #     reset(self.nn)
+    #     if self.root is not None:
+    #         uniform(self.root.size(0), self.root)
+    #     zeros(self.bias)
+
+    def forward(self,
+                x: Union[Tensor, OptPairTensor],
+                edge_index: Adj,
+                edge_attr: OptTensor = None,
+                size: Size = None) -> Tensor:
+        if isinstance(x, Tensor):
+            x: OptPairTensor = (x, x)
+
+        # propagate_type: (x: OptPairTensor, edge_attr: OptTensor)
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
+
+        x_r = x[1]
+        if x_r is not None and self.root is not None:
+            pass
+            # out = self.root(x_r)
+            # out += self.root(x_r)
+            # root_out = F.leaky_relu(self.root(x_r))
+            # print('out', out)
+            # print('root_out', root_out)
+            # out += root_out
+            # print('out', out)
+
+        out = torch.cat([out, x_r], dim=-1)
+        out = F.leaky_relu(out)
+        out = self.bn(out)
+        out = self.node_nn(out)
+        return out
+
+    def message(self, x_j: Tensor, edge_attr: Tensor) -> Tensor:
+        weight = self.edge_nn(edge_attr)
+        weight = weight.view(-1, self.in_channels_l, self.out_channels)
+        return torch.matmul(x_j.unsqueeze(1), weight).squeeze(1)
+
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__, self.in_channels, self.out_channels)
