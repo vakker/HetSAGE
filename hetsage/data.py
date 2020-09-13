@@ -282,6 +282,8 @@ class DataManager:
         val_idx, _ = torch.sort(subset_idx[last_tng_id:])
 
         unique_targets, target_counts = torch.unique(self.targets, return_counts=True)
+        self.target_weights = 1 / target_counts.float()
+        self.target_weights /= self.target_weights.sum()
         print('Data stats', len(self.targets), 100 * target_counts / float(len(self.targets)))
         print('Tng len', len(tng_idx))
         print('Val len', len(val_idx))

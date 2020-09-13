@@ -22,22 +22,35 @@ def zero_grad(model):
         p.grad = None
 
 
-def run_iter(data_manager, model, optimizer, device, initial=False):
+def run_iter(data_manager, model, optimizer, device, initial=False, weight_loss=False):
     loss_all = {}
     acc_all = {}
 
     if initial:
         with torch.no_grad():
-            loss, acc = _run_iter(model, data_manager, data_manager.val_loader, device=device)
+            loss, acc = _run_iter(model,
+                                  data_manager,
+                                  data_manager.val_loader,
+                                  device=device,
+                                  weight_loss=weight_loss)
             loss_all['val0'] = loss
             acc_all['val0'] = acc
 
-    loss, acc = _run_iter(model, data_manager, data_manager.tng_loader, optimizer, device=device)
+    loss, acc = _run_iter(model,
+                          data_manager,
+                          data_manager.tng_loader,
+                          optimizer,
+                          device=device,
+                          weight_loss=weight_loss)
     loss_all['tng'] = loss
     acc_all['tng'] = acc
 
     with torch.no_grad():
-        loss, acc = _run_iter(model, data_manager, data_manager.val_loader, device=device)
+        loss, acc = _run_iter(model,
+                              data_manager,
+                              data_manager.val_loader,
+                              device=device,
+                              weight_loss=weight_loss)
         loss_all['val'] = loss
         acc_all['val'] = acc
 
@@ -45,7 +58,7 @@ def run_iter(data_manager, model, optimizer, device, initial=False):
     return metrics
 
 
-def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
+def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', weight_loss=False):
     if optimizer is not None:
         model.train()
     else:
@@ -74,7 +87,8 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
         f_time = time.time()
         out = model(node_map, adjs)
         timing['forward'] += time.time() - f_time
-        loss = F.cross_entropy(out, targets)
+        loss = F.cross_entropy(
+            out, targets, weight=data_manager.target_weights.to(device) if weight_loss else None)
         if optimizer is not None:
             b_time = time.time()
             loss.backward()
@@ -148,7 +162,12 @@ def main(args):
     optimizer = torch.optim.RMSprop(model.parameters(), lr=0.005)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     for epoch in range(1, 1 + args.max_epochs):
-        metrics = run_iter(data_manager, model, optimizer, device=device, initial=epoch == 1)
+        metrics = run_iter(data_manager,
+                           model,
+                           optimizer,
+                           device=device,
+                           initial=epoch == 1,
+                           weight_loss=args.weight_loss)
         msg = ''
         msg += f'Epoch {epoch:02d}, '
         for s, v in metrics['acc'].items():
@@ -168,6 +187,7 @@ if __name__ == '__main__':
     PARSER.add_argument('--batch-size', type=int, default=200)
     PARSER.add_argument('--device', default='cuda:0')
     PARSER.add_argument('--no-label', action='store_true')
+    PARSER.add_argument('--weight-loss', action='store_true')
     PARSER.add_argument('--max-epochs', type=int)
 
     ARGS = PARSER.parse_args()
