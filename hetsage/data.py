@@ -287,19 +287,12 @@ class DataManager:
         print('Val len', len(val_idx))
         self.tng_target_nodes = self.target_nodes[tng_idx]
         self.tng_targets = self.targets[tng_idx]
-        # FIXME: this is wrong, it includes edges to val nodes in the val set
+        # FIXME: is this wrong? It includes edges to val nodes in the val set
         self.val_target_nodes = self.target_nodes[val_idx]
         self.val_targets = self.targets[val_idx]
         edge_idx = torch.tensor(list(self.g.edges)).t().contiguous()
         tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
 
-        # import ipdb
-        # ipdb.set_trace()
-        # neigbor_sizes = [3, 2]
-        # neigbor_sizes = [10, 10, 10, 10]
-        # neigbor_sizes = [-1, -1]
-        # neigbor_sizes = [10, 10]
-        # neigbor_sizes = [25]
         # batch_size = min(batch_size, len(self.tng_targets) // 4)
         self.tng_loader = NeighborSampler(
             # tng_edge_idx,
@@ -311,7 +304,7 @@ class DataManager:
             shuffle=True,
             num_workers=workers,
             pin_memory=True,
-            drop_last=True,
+            drop_last=False,
         )
 
         self.val_loader = NeighborSampler(
