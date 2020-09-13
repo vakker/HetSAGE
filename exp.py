@@ -145,7 +145,8 @@ def main(args):
         hidden_size=32,
     )
     model = model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=0.005)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     for epoch in range(1, 1 + args.max_epochs):
         metrics = run_iter(data_manager, model, optimizer, device=device, initial=epoch == 1)
         msg = ''
