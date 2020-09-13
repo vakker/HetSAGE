@@ -74,17 +74,17 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
         f_time = time.time()
         out = model(node_map, adjs)
         timing['forward'] += time.time() - f_time
-        loss = F.nll_loss(F.log_softmax(out, dim=-1), targets)
+        loss = F.cross_entropy(out, targets)
         if optimizer is not None:
             b_time = time.time()
             loss.backward()
             optimizer.step()
             timing['backward'] += time.time() - b_time
 
-        # print(float(loss.detach()))
         total_loss += float(loss.detach()) * batch_size
 
         y_pred = torch.argmax(out.detach(), dim=-1)
+        # print(out)
         # print(y_pred)
         # print(targets)
         total_correct += float((y_pred == targets).sum())
@@ -116,21 +116,32 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu'):
 
 
 def main(args):
-    init_random()
+    init_random(args.seed)
 
     device = torch.device(args.device)
 
-    data_manager = DataManager(args.graph,
-                               args.target,
-                               batch_size=args.batch_size,
-                               include_target_label=not args.no_label,
-                               neighbor_sizes=[50, 50],
-                               workers=args.workers)
+    data_manager = DataManager(
+        args.graph,
+        args.target,
+        batch_size=args.batch_size,
+        include_target_label=not args.no_label,
+        # neighbor_sizes=[-1] * 5,
+        neighbor_sizes=[50, 50],
+        workers=args.workers,
+    )
+    # model = Model(
+    #     data_manager.graph_info,
+    #     data_manager.neighbor_steps,
+    #     emb_hidden=[16, 16],
+    #     embed_size=16,
+    #     hidden_size=16,
+    # )
+    # CORA, MovieLens, Muta
     model = Model(
         data_manager.graph_info,
         data_manager.neighbor_steps,
-        embed_size=16,
         emb_hidden=[256, 64],
+        embed_size=32,
         hidden_size=32,
     )
     model = model.to(device)
