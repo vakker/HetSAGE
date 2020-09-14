@@ -1,9 +1,11 @@
 import argparse
 import time
+from os import path as osp
 
 import torch
 import torch.nn.functional as F
 import torch_geometric
+import yaml
 from tqdm import tqdm, trange
 
 from hetsage.data import DataManager
@@ -94,8 +96,10 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', we
         f_time = time.time()
         out = model(node_map, adjs)
         timing['forward'] += time.time() - f_time
-        loss = F.cross_entropy(
-            out, targets, weight=data_manager.target_weights.to(device, non_blocking=True) if weight_loss else None)
+        loss = F.cross_entropy(out,
+                               targets,
+                               weight=data_manager.target_weights.to(device, non_blocking=True)
+                               if weight_loss else None)
         if optimizer is not None:
             b_time = time.time()
             loss.backward()
@@ -138,43 +142,23 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', we
 
 def main(args):
     init_random(args.seed)
-
+    configs = yaml.safe_load(open(osp.join(args.logdir, 'config.yaml')))
     device = torch.device(args.device)
 
-    data_manager = DataManager(
-        args.graph,
-        args.target,
-        batch_size=args.batch_size,
-        include_target_label=not args.no_label,
-        # neighbor_sizes=[-1] * 5,
-        neighbor_sizes=[50, 50],
-        workers=args.workers,
-    )
-    # model = Model(
-    #     data_manager.graph_info,
-    #     data_manager.neighbor_steps,
-    #     emb_hidden=[16, 16],
-    #     embed_size=16,
-    #     hidden_size=16,
-    # )
-    # CORA, MovieLens, Muta
-    model = Model(
-        data_manager.graph_info,
-        data_manager.neighbor_steps,
-        emb_hidden=[256, 64],
-        embed_size=32,
-        hidden_size=32,
-    )
+    data_params = configs['data_params']
+    data_manager = DataManager(args.graph, **data_params, workers=args.workers)
+    model_params = configs['model_params']
+    model = Model(data_manager.graph_info, data_manager.neighbor_steps, **model_params)
     model = model.to(device)
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=0.005)
-    # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    opt_class = getattr(torch.optim, configs['optim'])
+    optimizer = opt_class(model.parameters(), **configs['optim_params'])
     for epoch in trange(1, 1 + args.max_epochs):
         metrics = run_iter(data_manager,
                            model,
                            optimizer,
                            device=device,
                            initial=epoch == 1,
-                           weight_loss=args.weight_loss)
+                           weight_loss=configs['weight_loss'])
         msg = ''
         msg += f'Epoch {epoch:02d}, '
         for s, v in metrics['acc'].items():
@@ -186,16 +170,12 @@ def main(args):
 
 if __name__ == '__main__':
     PARSER = argparse.ArgumentParser()
+    PARSER.add_argument('--logdir')
     PARSER.add_argument('--graph')
-    PARSER.add_argument('--target')
     PARSER.add_argument('--seed', type=int, default=0)
     PARSER.add_argument('--workers', type=int, default=2)
-    PARSER.add_argument('--activation', default='LeakyReLU')
-    PARSER.add_argument('--batch-size', type=int, default=200)
     PARSER.add_argument('--device', default='cuda:0')
-    PARSER.add_argument('--no-label', action='store_true')
-    PARSER.add_argument('--weight-loss', action='store_true')
-    PARSER.add_argument('--max-epochs', type=int)
+    PARSER.add_argument('--max-epochs', type=int, default=50)
 
     ARGS = PARSER.parse_args()
     main(ARGS)

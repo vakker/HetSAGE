@@ -1,0 +1,25 @@
+weight_loss: false
+optim: RMSprop
+optim_params:
+  lr: 0.005
+  momentum: 0.0
+  weight_decay: 0.0
+model_params:
+  emb_hidden: [32, 32]
+  embed_size: 32
+  emb_final_act: true
+  hidden_size: 32
+  edge_hidden: [32, 32]
+  node_hidden: [32, 32]
+  edge_final_act: false
+  node_final_act: true
+  aggr: 'mean'
+  nn_norm: LayerNorm
+  out_hidden: [32, 32]
+  batch_norm: true
+  activation: LeakyReLU
+data_params:
+  batch_size: 200
+  include_target_label: true
+  neighbor_sizes: [50, 50]
+  target: 'paper:label'

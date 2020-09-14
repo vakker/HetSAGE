@@ -2,9 +2,7 @@ from typing import Callable, Tuple, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.nn import Parameter
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.typing import OptPairTensor, OptTensor, Size
 
@@ -53,7 +51,16 @@ class Model(nn.Module):
                  neighbor_steps,
                  emb_hidden=[256, 256],
                  embed_size=256,
+                 emb_final_act=True,
+                 edge_hidden=[256, 256],
+                 node_hidden=[256, 256],
+                 edge_final_act=False,
+                 node_final_act=True,
+                 aggr='mean',
+                 nn_norm='LayerNorm',
                  hidden_size=256,
+                 out_hidden=[256, 256],
+                 batch_norm=True,
                  activation='LeakyReLU'):
         super().__init__()
 
@@ -64,63 +71,65 @@ class Model(nn.Module):
                                        hidden_sizes=emb_hidden,
                                        output_size=embed_size,
                                        activation=activation,
-                                       final_act=True)
+                                       final_act=emb_final_act)
         self.embedders = nn.ModuleDict(embedders)
 
         self.embedders_out = MLP(input_size=graph_info['target_node']['in_size'],
                                  hidden_sizes=emb_hidden,
                                  output_size=embed_size,
                                  activation=activation,
-                                 final_act=True)
+                                 final_act=emb_final_act)
 
-        root_layer = True
         module_list = [
-            NNConv(
-                embed_size,
-                hidden_size,
-                edge_nn=MLP(input_size=graph_info['edges']['in_size'],
-                            hidden_sizes=[hidden_size, hidden_size],
-                            output_size=hidden_size * embed_size,
-                            activation=activation,
-                            final_act=True),
-                node_nn=MLP(input_size=hidden_size + embed_size,
-                            hidden_sizes=[hidden_size, hidden_size],
-                            output_size=hidden_size,
-                            activation=activation,
-                            final_act=False),
-                aggr='mean',
-                root_layer=root_layer,
-            )
+            NNConv(embed_size,
+                   hidden_size,
+                   edge_nn=MLP(input_size=graph_info['edges']['in_size'],
+                               hidden_sizes=edge_hidden,
+                               output_size=hidden_size * embed_size,
+                               activation=activation,
+                               final_act=edge_final_act),
+                   node_nn=MLP(input_size=hidden_size + embed_size,
+                               hidden_sizes=node_hidden,
+                               output_size=hidden_size,
+                               activation=activation,
+                               final_act=node_final_act),
+                   norm=nn_norm,
+                   aggr=aggr)
         ]
-        bns = [torch.nn.BatchNorm1d(hidden_size)]
         for s in range(1, neighbor_steps):
             module_list.append(
-                NNConv(
-                    hidden_size,
-                    hidden_size,
-                    edge_nn=MLP(input_size=graph_info['edges']['in_size'],
-                                hidden_sizes=[hidden_size, hidden_size],
-                                output_size=hidden_size * hidden_size,
-                                activation=activation,
-                                final_act=True),
-                    node_nn=MLP(input_size=hidden_size * 2,
-                                hidden_sizes=[hidden_size, hidden_size],
-                                output_size=hidden_size,
-                                activation=activation,
-                                final_act=False),
-                    aggr='mean',
-                    root_layer=root_layer,
-                ))
-            bns.append(torch.nn.BatchNorm1d(hidden_size))
+                NNConv(hidden_size,
+                       hidden_size,
+                       edge_nn=MLP(input_size=graph_info['edges']['in_size'],
+                                   hidden_sizes=edge_hidden,
+                                   output_size=hidden_size * hidden_size,
+                                   activation=activation,
+                                   final_act=edge_final_act),
+                       node_nn=MLP(input_size=hidden_size * 2,
+                                   hidden_sizes=node_hidden,
+                                   output_size=hidden_size,
+                                   activation=activation,
+                                   final_act=node_final_act),
+                       norm=nn_norm,
+                       aggr=aggr))
 
         self.convs = nn.ModuleList(module_list)
-        self.bns = nn.ModuleList(bns)
 
-        self.act = getattr(torch.nn, activation)()
+        if batch_norm:
+            bns = []
+            for s in range(neighbor_steps):
+                bns.append(torch.nn.BatchNorm1d(hidden_size))
+
+            self.bns = nn.ModuleList(bns)
+        else:
+            self.bns = None
 
         output_size = graph_info['target_node']['out_size']
-        self.lin1 = torch.nn.Linear(hidden_size, hidden_size)
-        self.lin2 = torch.nn.Linear(hidden_size, output_size)
+        self.out_nn = MLP(input_size=hidden_size,
+                          hidden_sizes=out_hidden,
+                          output_size=output_size,
+                          activation=activation,
+                          final_act=False)
 
     @property
     def device(self):
@@ -141,16 +150,12 @@ class Model(nn.Module):
         for i, (edge_index, e_feat, size) in enumerate(adjs):
             h_target = h[:size[1]]
             h = self.convs[i]((h, h_target), edge_index, e_feat)
-            # h = self.act(h)
-            # print('before', h)
-            # h = self.bns[i](h)
-            # print('after', h)
+            if self.bns:
+                h = self.bns[i](h)
             # out, h = self.gru(m.unsqueeze(0), h)
             # out = out.squeeze(0)
 
-        h = self.lin1(h)
-        h = self.act(h)
-        h = self.lin2(h)
+        h = self.out_nn(h)
         return h
 
 
@@ -160,8 +165,8 @@ class NNConv(MessagePassing):
                  out_channels: int,
                  node_nn: Callable,
                  edge_nn: Callable,
+                 norm: str = 'LayerNorm',
                  aggr: str = 'add',
-                 root_layer: bool = True,
                  **kwargs):
         super().__init__(aggr=aggr, **kwargs)
 
@@ -176,12 +181,9 @@ class NNConv(MessagePassing):
 
         self.in_channels_l = in_channels[0]
 
-        if root_layer:
-            self.root = nn.Linear(in_channels[1], out_channels)
-        else:
-            self.root = None
+        self.ln1 = getattr(torch.nn, norm)(out_channels)
+        self.ln2 = getattr(torch.nn, norm)(out_channels)
 
-        self.bn = torch.nn.BatchNorm1d(out_channels + in_channels[1])
         # self.reset_parameters()
 
     # def reset_parameters(self):
@@ -202,19 +204,17 @@ class NNConv(MessagePassing):
         out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
 
         x_r = x[1]
-        if x_r is not None and self.root is not None:
-            pass
-            # out = self.root(x_r)
-            # out += self.root(x_r)
-            # root_out = F.leaky_relu(self.root(x_r))
-            # print('out', out)
-            # print('root_out', root_out)
-            # out += root_out
-            # print('out', out)
+        # if x_r is not None and self.root is not None:
+        #     pass
+        # out = self.root(x_r)
+        # out += self.root(x_r)
+        # root_out = F.leaky_relu(self.root(x_r))
+        # print('out', out)
+        # print('root_out', root_out)
+        # out += root_out
+        # print('out', out)
 
-        out = torch.cat([out, x_r], dim=-1)
-        out = F.leaky_relu(out)
-        out = self.bn(out)
+        out = torch.cat([self.ln1(out), self.ln2(x_r)], dim=-1)
         out = self.node_nn(out)
         return out
 
