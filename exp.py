@@ -2,6 +2,7 @@ import argparse
 import time
 from os import path as osp
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric
@@ -10,57 +11,66 @@ from tqdm import tqdm, trange
 
 from hetsage.data import DataManager
 from hetsage.model import Model
-from hetsage.utils import init_random
+from hetsage.utils import (TB, flatten, init_random, print_metrics,
+                           write_metrics)
 
 
-def print_grad(model):
-    for p in model.parameters():
-        if p is not None and p.grad is not None:
-            print(torch.norm(p.grad))
-
-
-def zero_grad(model):
-    for p in model.parameters():
-        p.grad = None
-
-
-def run_iter(data_manager, model, optimizer, device, initial=False, weight_loss=False):
-    loss_all = {}
-    acc_all = {}
-
-    if initial:
-        with torch.no_grad():
-            loss, acc = _run_iter(model,
-                                  data_manager,
-                                  data_manager.val_loader,
-                                  device=device,
-                                  weight_loss=weight_loss)
-            loss_all['val0'] = loss
-            acc_all['val0'] = acc
-
-    loss, acc = _run_iter(model,
-                          data_manager,
-                          data_manager.tng_loader,
-                          optimizer,
-                          device=device,
-                          weight_loss=weight_loss)
-    loss_all['tng'] = loss
-    acc_all['tng'] = acc
-
+def run_training(epochs, data_manager, model, optimizer, writer, device='cpu', weight_loss=False):
+    metrics = {}
     with torch.no_grad():
-        loss, acc = _run_iter(model,
-                              data_manager,
-                              data_manager.val_loader,
-                              device=device,
-                              weight_loss=weight_loss)
-        loss_all['val'] = loss
-        acc_all['val'] = acc
+        loss, acc = run_iter(model,
+                             data_manager,
+                             data_manager.tng_loader,
+                             device=device,
+                             weight_loss=weight_loss)
+        metrics['acc/tng'] = acc
+        metrics['loss/tng'] = loss
 
-    metrics = {'loss': loss_all, 'acc': acc_all}
-    return metrics
+        loss, acc = run_iter(model,
+                             data_manager,
+                             data_manager.val_loader,
+                             device=device,
+                             weight_loss=weight_loss)
+        metrics['acc/val'] = acc
+        metrics['loss/val'] = loss
+        print_metrics(0, metrics)
+        write_metrics(0, metrics, writer)
+
+    final_metrics = {
+        'max-acc/val': 0,
+        'max-acc/tng': 0,
+        'min-loss/val': np.inf,
+        'min-loss/tng': np.inf,
+    }
+    for epoch in trange(1, 1 + epochs):
+        loss, acc = run_iter(model,
+                             data_manager,
+                             data_manager.tng_loader,
+                             optimizer,
+                             device=device,
+                             weight_loss=weight_loss)
+        final_metrics['max-acc/tng'] = max(final_metrics['max-acc/tng'], acc)
+        final_metrics['min-loss/tng'] = min(final_metrics['min-loss/tng'], loss)
+        metrics['acc/tng'] = acc
+        metrics['loss/tng'] = loss
+
+        with torch.no_grad():
+            loss, acc = run_iter(model,
+                                 data_manager,
+                                 data_manager.val_loader,
+                                 device=device,
+                                 weight_loss=weight_loss)
+        final_metrics['max-acc/val'] = max(final_metrics['max-acc/val'], acc)
+        final_metrics['min-loss/val'] = min(final_metrics['min-loss/val'], loss)
+        metrics['acc/val'] = acc
+        metrics['loss/val'] = loss
+        print_metrics(epoch, metrics)
+        write_metrics(epoch, metrics, writer)
+        write_metrics(epoch, final_metrics, writer)
+    return final_metrics
 
 
-def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', weight_loss=False):
+def run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', weight_loss=False):
     if optimizer is not None:
         model.train()
     else:
@@ -118,26 +128,10 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', we
         data_time = time.time()
 
     loss = total_loss / total_nodes
-    approx_acc = total_correct / total_nodes
+    acc = 100 * total_correct / total_nodes
 
     # print('Timing stats:', timing)
-    return loss, approx_acc
-
-
-# @torch.no_grad()
-# def test():
-#     model.eval()
-
-#     out = model.inference(x)
-
-#     y_true = y.cpu().unsqueeze(-1)
-#     y_pred = out.argmax(dim=-1, keepdim=True)
-
-#     results = []
-#     for mask in [data.train_mask, data.val_mask, data.test_mask]:
-#         results += [int(y_pred[mask].eq(y_true[mask]).sum()) / int(mask.sum())]
-
-#     return results
+    return loss, acc
 
 
 def main(args):
@@ -152,20 +146,19 @@ def main(args):
     model = model.to(device)
     opt_class = getattr(torch.optim, configs['optim'])
     optimizer = opt_class(model.parameters(), **configs['optim_params'])
-    for epoch in trange(1, 1 + args.max_epochs):
-        metrics = run_iter(data_manager,
+
+    writer = TB(log_dir=args.logdir, purge_step=0)
+
+    metrics = run_training(args.max_epochs,
+                           data_manager,
                            model,
                            optimizer,
+                           writer,
                            device=device,
-                           initial=epoch == 1,
                            weight_loss=configs['weight_loss'])
-        msg = ''
-        msg += f'Epoch {epoch:02d}, '
-        for s, v in metrics['acc'].items():
-            msg += f'{s} acc: {100*v:.2f}, '
-        for s, v in metrics['loss'].items():
-            msg += f'{s} loss: {v:.5f}, '
-        tqdm.write(msg)
+
+    writer.add_hparams(flatten(configs), metrics)
+    writer.close()
 
 
 if __name__ == '__main__':
