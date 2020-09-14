@@ -359,16 +359,6 @@ class DataManager:
         _, _, value = self.targets_sparse[n_id].coo()
         return value
 
-    def get_ind_map(self, n_id1, n_id2, ignore1=[]):
-        ind_map = []
-        for i, id in enumerate(n_id1):
-            if id in n_id2 and i not in ignore1:
-                t = torch.tensor([i, id, torch.nonzero(n_id2 == id, as_tuple=False).squeeze()])
-                ind_map.append(t)
-        if len(ind_map) == 0:
-            return None
-        return torch.stack(ind_map)
-
     def get_id_map(self, node_id):
         node_map = {
             node_type: {
@@ -379,23 +369,30 @@ class DataManager:
         }
         node_map.update({'target': {'x': [], 'h_id': []}})
 
-        for i, n_id_map in enumerate(node_id):
-            node_type = list(self.node_features.keys())[self.node_map[n_id_map[0], 0]]
-            idx = self.node_map[n_id_map[0], 1]
-            if n_id_map[1] != 1:
-                node_map[node_type]['h_id'].append(torch.tensor([i]))
-                node_map[node_type]['x'].append(self.node_features[node_type]['x_in'][idx])
-            else:
-                node_map['target']['h_id'].append(torch.tensor([i]))
-                node_map['target']['x'].append(self.node_features[node_type]['x_out'][idx])
+        nodes = [
+            torch.tensor(range(len(node_id))).unsqueeze(-1),
+            node_id[:, 1].unsqueeze(-1),
+            self.node_map[node_id[:, 0]],
+        ]
+        nodes = torch.cat(nodes, dim=1)
+        for node_type_id, node_type in enumerate(list(self.node_features.keys())):
+            idx = (nodes[:, 1] == 1) & (nodes[:, 2] == node_type_id)
+            if torch.any(idx):
+                node_map['target']['x'] = self.node_features[node_type]['x_out'][nodes[idx, 3]]
+                node_map['target']['h_id'] = nodes[idx, 0]
+
+            idx = (nodes[:, 1] != 1) & (nodes[:, 2] == node_type_id)
+            if torch.any(idx):
+                node_map[node_type]['x'] = self.node_features[node_type]['x_in'][nodes[idx, 3]]
+                node_map[node_type]['h_id'] = nodes[idx, 0]
 
         node_map_out = {}
         for node_type, n_map in node_map.items():
             if len(node_map[node_type]['x']) == 0:
                 continue
             node_map_out[node_type] = NodeMap(
-                torch.stack(node_map[node_type]['x']),
-                torch.stack(node_map[node_type]['h_id']).squeeze(),
+                node_map[node_type]['x'],
+                node_map[node_type]['h_id'].squeeze(),
             )
 
         return node_map_out
