@@ -175,7 +175,7 @@ class NeighborSampler(torch.utils.data.DataLoader):
                            sparse_sizes=(N, N),
                            is_sorted=False)
         adj = adj.t() if flow == 'source_to_target' else adj
-        self.adj = adj.to('cpu')
+        self.adj = adj
 
         if node_idx is None:
             node_idx = torch.arange(N)
@@ -271,6 +271,8 @@ class DataManager:
         self.g, self.target_nodes, self.targets, self.node_features, self.edge_feats = featurize(
             g, target_node, target_prop, include_target_label)
 
+        edge_idx = torch.tensor(list(self.g.edges)).t().contiguous()
+
         if target_node_lim:
             k = target_node_lim
         else:
@@ -292,8 +294,7 @@ class DataManager:
         # FIXME: is this wrong? It includes edges to val nodes in the val set
         self.val_target_nodes = self.target_nodes[val_idx]
         self.val_targets = self.targets[val_idx]
-        edge_idx = torch.tensor(list(self.g.edges)).t().contiguous()
-        tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
+        # tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
 
         # batch_size = min(batch_size, len(self.tng_targets) // 4)
         self.tng_loader = NeighborSampler(
