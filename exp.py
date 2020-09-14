@@ -67,28 +67,35 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', we
     total_loss = 0
     total_correct = 0
     total_nodes = 0
-    timing = {'forward': 0, 'backward': 0, 'data': 0}
+    timing = {
+        'forward': 0,
+        'backward': 0,
+        'data': 0,
+        'transfer': 0,
+    }
 
     data_time = time.time()
     for batch_size, n_id, adjs in tqdm(data_loader):
         timing['data'] += time.time() - data_time
 
+        transfer_time = time.time()
         if isinstance(adjs, torch_geometric.data.sampler.Adj):
             adjs = [adjs]
-        adjs = [adj.to(device) for adj in adjs]
+        adjs = [adj.to(device, non_blocking=True) for adj in adjs]
         node_map = data_manager.get_id_map(n_id)
-        node_map = {k: v.to(device) for k, v in node_map.items()}
+        node_map = {k: v.to(device, non_blocking=True) for k, v in node_map.items()}
         targets = data_manager.get_targets(n_id[:batch_size, 0])
-        targets = targets.to(device)
+        targets = targets.to(device, non_blocking=True)
         if optimizer is not None:
             # print_grad(model)
             # zero_grad(model)
             optimizer.zero_grad()
+        timing['transfer'] += time.time() - transfer_time
         f_time = time.time()
         out = model(node_map, adjs)
         timing['forward'] += time.time() - f_time
         loss = F.cross_entropy(
-            out, targets, weight=data_manager.target_weights.to(device) if weight_loss else None)
+            out, targets, weight=data_manager.target_weights.to(device, non_blocking=True) if weight_loss else None)
         if optimizer is not None:
             b_time = time.time()
             loss.backward()
