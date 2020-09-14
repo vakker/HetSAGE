@@ -4,7 +4,7 @@ import time
 import torch
 import torch.nn.functional as F
 import torch_geometric
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 from hetsage.data import DataManager
 from hetsage.model import Model
@@ -75,7 +75,7 @@ def _run_iter(model, data_manager, data_loader, optimizer=None, device='cpu', we
     }
 
     data_time = time.time()
-    for batch_size, n_id, adjs in tqdm(data_loader):
+    for batch_size, n_id, adjs in tqdm(data_loader, leave=False):
         timing['data'] += time.time() - data_time
 
         transfer_time = time.time()
@@ -168,7 +168,7 @@ def main(args):
     model = model.to(device)
     optimizer = torch.optim.RMSprop(model.parameters(), lr=0.005)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    for epoch in range(1, 1 + args.max_epochs):
+    for epoch in trange(1, 1 + args.max_epochs):
         metrics = run_iter(data_manager,
                            model,
                            optimizer,
@@ -181,7 +181,7 @@ def main(args):
             msg += f'{s} acc: {100*v:.2f}, '
         for s, v in metrics['loss'].items():
             msg += f'{s} loss: {v:.5f}, '
-        print(msg)
+        tqdm.write(msg)
 
 
 if __name__ == '__main__':
