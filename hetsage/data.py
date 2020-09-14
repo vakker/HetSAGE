@@ -24,7 +24,6 @@ def featurize(g, target_node, target_prop, include_target_label=True):
     edge_cats = sorted(list(edge_cats))
     edge_feats = []
     for n1, n2, k, data in tqdm(g.edges(data=True, keys=True)):
-        # g.edges[n1, n2, k]['x'] = (data['label'] == np.array(edge_cats)).astype(np.int)
         edge_feats.append((data['label'] == np.array(edge_cats)).astype(np.int))
     edge_feats = tensor(np.stack(edge_feats))
 
@@ -309,7 +308,6 @@ class DataManager:
         self.val_targets = self.targets[val_idx]
         # tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
 
-        # batch_size = min(batch_size, len(self.tng_targets) // 4)
         self.tng_loader = NeighborSampler(
             # tng_edge_idx,
             edge_idx,
