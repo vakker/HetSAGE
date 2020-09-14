@@ -273,6 +273,19 @@ class DataManager:
 
         edge_idx = torch.tensor(list(self.g.edges)).t().contiguous()
 
+        self.targets_sparse = SparseTensor(row=self.target_nodes,
+                                           col=torch.zeros_like(self.target_nodes),
+                                           value=self.targets)
+
+        self.node_map = torch.zeros((len(self.g.nodes), 2), dtype=torch.long)
+        for i, _ in enumerate(self.node_map):
+            for node_type_id, (node_type, node_props) in enumerate(self.node_features.items()):
+                idx = torch.nonzero(i == node_props['n_ids'], as_tuple=False)
+                if idx.shape[0] == 1:
+                    idx = idx.squeeze(dim=-1)
+                    self.node_map[i, 0] = node_type_id
+                    self.node_map[i, 1] = idx
+
         if target_node_lim:
             k = target_node_lim
         else:
@@ -343,8 +356,8 @@ class DataManager:
         return edge_idx[:, mask]
 
     def get_targets(self, n_id):
-        ind_map = self.get_ind_map(n_id, self.target_nodes)
-        return self.targets[ind_map[:, 2]]
+        _, _, value = self.targets_sparse[n_id].coo()
+        return value
 
     def get_ind_map(self, n_id1, n_id2, ignore1=[]):
         ind_map = []
@@ -367,24 +380,22 @@ class DataManager:
         node_map.update({'target': {'x': [], 'h_id': []}})
 
         for i, n_id_map in enumerate(node_id):
-            for node_type, node_props in self.node_features.items():
-                idx = torch.nonzero(n_id_map[0] == node_props['n_ids'], as_tuple=False)
-                if idx.shape[0] == 1:
-                    idx = idx.squeeze(dim=-1)
-                    if n_id_map[1] != 1:
-                        node_map[node_type]['h_id'].append(torch.tensor([i]))
-                        node_map[node_type]['x'].append(self.node_features[node_type]['x_in'][idx])
-                    else:
-                        node_map['target']['h_id'].append(torch.tensor([i]))
-                        node_map['target']['x'].append(self.node_features[node_type]['x_out'][idx])
+            node_type = list(self.node_features.keys())[self.node_map[n_id_map[0], 0]]
+            idx = self.node_map[n_id_map[0], 1]
+            if n_id_map[1] != 1:
+                node_map[node_type]['h_id'].append(torch.tensor([i]))
+                node_map[node_type]['x'].append(self.node_features[node_type]['x_in'][idx])
+            else:
+                node_map['target']['h_id'].append(torch.tensor([i]))
+                node_map['target']['x'].append(self.node_features[node_type]['x_out'][idx])
 
         node_map_out = {}
         for node_type, n_map in node_map.items():
             if len(node_map[node_type]['x']) == 0:
                 continue
             node_map_out[node_type] = NodeMap(
-                torch.cat(node_map[node_type]['x']),
-                torch.cat(node_map[node_type]['h_id']),
+                torch.stack(node_map[node_type]['x']),
+                torch.stack(node_map[node_type]['h_id']).squeeze(),
             )
 
         return node_map_out
