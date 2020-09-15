@@ -1,4 +1,5 @@
 import collections
+import gc
 import random
 
 import numpy as np
@@ -51,6 +52,21 @@ def flatten(d, parent_key='', sep='/'):
         else:
             items.append((new_key, v))
     return dict(items)
+
+
+def show_tensors(device=None):
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if hasattr(obj, 'device'):
+                    if device is None:
+                        print(type(obj), obj.device, obj.size())
+                    elif obj.device == device:
+                        print(type(obj), obj.device, obj.size())
+                # else:
+                #     print(type(obj), obj.size().item())
+        except Exception as e:
+            print(e)
 
 
 class TB(SummaryWriter):
