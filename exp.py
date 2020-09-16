@@ -142,7 +142,7 @@ def main(args):
     device = torch.device(args.device)
 
     data_params = configs['data_params']
-    data_manager = DataManager(args.graph, **data_params, workers=args.workers)
+    data_manager = DataManager(args.graph, **data_params, workers=args.workers, seed=args.seed)
     model_params = configs['model_params']
     model = Model(data_manager.graph_info, data_manager.neighbor_steps, **model_params)
     model = model.to(device)

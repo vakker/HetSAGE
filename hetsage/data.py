@@ -3,6 +3,7 @@ from typing import List, NamedTuple, Optional, Tuple
 import networkx as nx
 import numpy as np
 import torch
+from sklearn.model_selection import train_test_split
 from torch_sparse import SparseTensor
 from tqdm import tqdm
 
@@ -259,7 +260,8 @@ class DataManager:
                  neighbor_sizes=[20, 20],
                  batch_size=200,
                  workers=1,
-                 target_node_lim=None):
+                 target_node_lim=None,
+                 seed=0):
         # load graph
         g = nx.nx.read_gpickle(graph_file)
         self.neighbor_steps = len(neighbor_sizes)
@@ -289,24 +291,31 @@ class DataManager:
             k = target_node_lim
         else:
             k = self.target_nodes.size(0) + 1
-        perm = torch.randperm(self.target_nodes.size(0))
-        subset_idx = perm[:k]
-        last_tng_id = int(0.8 * subset_idx.size(0))
-        tng_idx, _ = torch.sort(subset_idx[:last_tng_id])
-        val_idx, _ = torch.sort(subset_idx[last_tng_id:])
+        # perm = torch.randperm(self.target_nodes.size(0))
+        # subset_idx = perm[:k]
+        # last_tng_id = int(0.8 * subset_idx.size(0))
+        # tng_idx, _ = torch.sort(subset_idx[:last_tng_id])
+        # val_idx, _ = torch.sort(subset_idx[last_tng_id:])
+
+        splits = train_test_split(self.target_nodes[:k],
+                                  self.targets[:k],
+                                  stratify=self.targets[:k],
+                                  test_size=0.2,
+                                  random_state=seed)
+        self.tng_target_nodes, self.val_target_nodes, self.tng_targets, self.val_targets = splits
+
+        # self.tng_target_nodes = self.target_nodes[tng_idx]
+        # self.tng_targets = self.targets[tng_idx]
+        # self.val_target_nodes = self.target_nodes[val_idx]
+        # self.val_targets = self.targets[val_idx]
+        # tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
 
         unique_targets, target_counts = torch.unique(self.targets, return_counts=True)
         self.target_weights = 1 / target_counts.float()
         self.target_weights /= self.target_weights.sum()
         print('Data stats', len(self.targets), 100 * target_counts / float(len(self.targets)))
-        print('Tng len', len(tng_idx))
-        print('Val len', len(val_idx))
-        self.tng_target_nodes = self.target_nodes[tng_idx]
-        self.tng_targets = self.targets[tng_idx]
-        # FIXME: is this wrong? It includes edges to val nodes in the val set
-        self.val_target_nodes = self.target_nodes[val_idx]
-        self.val_targets = self.targets[val_idx]
-        # tng_edge_idx = self.filter_edge_index(edge_idx, self.val_target_nodes)
+        print('Tng len', len(self.tng_targets))
+        print('Val len', len(self.val_targets))
 
         self.tng_loader = NeighborSampler(
             # tng_edge_idx,
