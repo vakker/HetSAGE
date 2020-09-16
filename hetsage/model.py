@@ -182,7 +182,7 @@ class NNConv(MessagePassing):
         self.in_channels_l = in_channels[0]
 
         self.ln1 = getattr(torch.nn, norm)(out_channels)
-        self.ln2 = getattr(torch.nn, norm)(out_channels)
+        self.ln2 = getattr(torch.nn, norm)(in_channels[0])
 
         # self.reset_parameters()
 
