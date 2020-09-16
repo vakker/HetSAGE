@@ -35,6 +35,7 @@ def run_training(epochs, data_manager, model, optimizer, writer, device='cpu', w
         metrics['loss/val'] = loss
         print_metrics(0, metrics)
         write_metrics(0, metrics, writer)
+        writer.write_csv(metrics, 0)
 
     final_metrics = {
         'max-acc/val': 0,
@@ -66,6 +67,7 @@ def run_training(epochs, data_manager, model, optimizer, writer, device='cpu', w
         metrics['loss/val'] = loss
         print_metrics(epoch, metrics)
         write_metrics(epoch, metrics, writer)
+        writer.write_csv(metrics, epoch)
         write_metrics(epoch, final_metrics, writer)
     return final_metrics
 
@@ -147,7 +149,7 @@ def main(args):
     opt_class = getattr(torch.optim, configs['optim'])
     optimizer = opt_class(model.parameters(), **configs['optim_params'])
 
-    writer = TB(log_dir=args.logdir, purge_step=0)
+    writer = TB(log_dir=osp.join(args.logdir, 'seed-' + str(args.seed)), purge_step=0)
 
     metrics = run_training(args.max_epochs,
                            data_manager,

@@ -1,6 +1,8 @@
 import collections
+import csv
 import gc
 import random
+from os import path as osp
 
 import numpy as np
 import torch
@@ -70,6 +72,21 @@ def show_tensors(device=None):
 
 
 class TB(SummaryWriter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.csv_file = open(osp.join(self._get_file_writer().get_logdir(), 'logs.csv'),
+                             'w',
+                             newline='')
+        self.csv_writer = None
+
+    def write_csv(self, metrics, global_step):
+        metrics.update({'epoch': global_step})
+        if self.csv_writer is None:
+            self.csv_writer = csv.DictWriter(self.csv_file, fieldnames=metrics.keys())
+            self.csv_writer.writeheader()
+
+        self.csv_writer.writerow(metrics)
+
     def add_hparams(self, hparam_dict, metric_dict):
         torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
         if type(hparam_dict) is not dict or type(metric_dict) is not dict:
@@ -83,3 +100,7 @@ class TB(SummaryWriter):
             w_hp.file_writer.add_summary(sei)
             # for k, v in metric_dict.items():
             #     w_hp.add_scalar(k, v)
+
+    def close(self):
+        super().close()
+        self.csv_file.close()
