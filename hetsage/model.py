@@ -118,7 +118,7 @@ class Model(nn.Module):
         if batch_norm:
             bns = []
             for s in range(neighbor_steps):
-                bns.append(torch.nn.BatchNorm1d(hidden_size))
+                bns.append(torch.nn.BatchNorm1d(hidden_size, track_running_stats=False))
 
             self.bns = nn.ModuleList(bns)
         else:
