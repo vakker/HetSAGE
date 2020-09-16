@@ -80,6 +80,7 @@ class TB(SummaryWriter):
         self.csv_writer = None
 
     def write_csv(self, metrics, global_step):
+        metrics = metrics.copy()
         metrics.update({'epoch': global_step})
         if self.csv_writer is None:
             self.csv_writer = csv.DictWriter(self.csv_file, fieldnames=metrics.keys())
