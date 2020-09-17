@@ -228,6 +228,7 @@ class NeighborSampler(torch.utils.data.DataLoader):
         _, sorted_idx_inv = torch.sort(sorted_idx)
         n_id_map = n_id_map[sorted_idx]
         adjs = []
+        target_size = len(batch)
         for i, size in enumerate(self.sizes):
             edge_index = torch.cat(edge_indeces[i], dim=-1)
             edge_index = reindex(sorted_idx, sorted_idx_inv, edge_index)
@@ -235,7 +236,8 @@ class NeighborSampler(torch.utils.data.DataLoader):
             M = edge_index[0].max().item() + 1
             N = edge_index[1].max().item() + 1
             size = (M, N)
-            adjs.append(Adj(edge_index, e_feat, size))
+            adjs.append(Adj(edge_index, e_feat, size, target_size))
+            target_size = M
 
         return batch_size, n_id_map, adjs[::-1]
 
@@ -420,10 +422,12 @@ class Adj(NamedTuple):
     edge_index: torch.Tensor
     edge_features: torch.Tensor
     size: Tuple[int, int]
+    target_size: int
 
     def to(self, *args, **kwargs):
         return Adj(
             self.edge_index.to(*args, **kwargs),
             self.edge_features.to(*args, **kwargs),
             self.size,
+            self.target_size
         )

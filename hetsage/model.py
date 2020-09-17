@@ -147,8 +147,8 @@ class Model(nn.Module):
                 h[node_info.h_id] = self.embedders[node_type](node_info.x)
 
         # message passing
-        for i, (edge_index, e_feat, size) in enumerate(adjs):
-            h_target = h[:size[1]]
+        for i, (edge_index, e_feat, size, target_size) in enumerate(adjs):
+            h_target = h[:target_size]
             h = self.convs[i]((h, h_target), edge_index, e_feat)
             if self.bns:
                 h = self.bns[i](h)
