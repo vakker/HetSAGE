@@ -1,4 +1,5 @@
 import argparse
+from os import path as osp
 
 import networkx as nx
 import pandas as pd
@@ -7,15 +8,23 @@ from pyswip import Prolog
 from tqdm import tqdm
 
 
+def single_query(p, query):
+    for res in tqdm(p.query(query), desc='Results', leave=False):
+        res = {k: v.decode() if isinstance(v, (bytes, bytearray)) else v for k, v in res.items()}
+        yield res
+
+
 def query_results(p, query):
     # ipdb.set_trace()
     for q in tqdm(query, desc='Proc query'):
-        for res in tqdm(p.query(q[0]), desc='Results', leave=False):
-            res = {
-                k: v.decode() if isinstance(v, (bytes, bytearray)) else v
-                for k, v in res.items()
-            }
+        for res in single_query(p, q[0]):
             yield q, res
+        # for res in tqdm(p.query(q[0]), desc='Results', leave=False):
+        #     res = {
+        #         k: v.decode() if isinstance(v, (bytes, bytearray)) else v
+        #         for k, v in res.items()
+        #     }
+        #     yield q, res
 
 
 def clear_str(string):
@@ -32,11 +41,12 @@ def clear_str(string):
 
 def main(args):
     opts = yaml.safe_load(open(args.opts))
+    target_dir = osp.dirname(args.opts)
 
     sql_db = opts['sql_addr'] + opts['sql_db']
     tables = {t: pd.read_sql_table(t, sql_db) for t in tqdm(opts['tables'], desc='Getting tables')}
 
-    f = open(opts['sql_db'] + '.pl', 'w')
+    f = open(osp.join(target_dir, 'bk.pl'), 'w')
     prolog = Prolog()
     for t, df in tqdm(tables.items(), desc='Proc tables'):
         pred_name = opts['tables'][t].get('pred_map', t)
@@ -57,6 +67,19 @@ def main(args):
             prolog.assertz(r)
             f.write(r + '.\n')
     f.close()
+
+    rules = opts['aleph']
+    for r in rules:
+        prolog.assertz(r)
+    # prolog.assertz(opts['aleph']['pos'])
+    # prolog.assertz(opts['aleph']['neg'])
+
+    for s in ['pos', 'neg']:
+        with open(osp.join(target_dir, s + '.pl'), 'w') as f:
+            for res in single_query(prolog, s + '(X)'):
+                sample = res['X']
+                to_ass = f'target({sample})'
+                f.write(to_ass + '.\n')
 
     types = opts['types']
     properties = opts['properties']
@@ -107,7 +130,7 @@ def main(args):
                 props.update({prop: prop_value})
             g.nodes[node][prop_type] = props
         else:
-            print(f'Node not in graph: {node}')
+            print(f'Node not in graph: {node}, {prop}')
 
     print('Getting connections')
     for q, res in query_results(prolog, connections):
@@ -119,16 +142,16 @@ def main(args):
             print(f'Wrong query/triple:', q)
 
         if node_1 not in g:
-            print(f'Node not in graph: {node_1}')
+            print(f'Node not in graph: {node_1} for {node_1} {edge_label} {node_2}')
             continue
         if node_2 not in g:
-            print(f'Node not in graph: {node_2}')
+            print(f'Node not in graph: {node_2} for {node_1} {edge_label} {node_2}')
             continue
         g.add_edge(node_1, node_2, label=edge_label)
 
-    nx.write_gpickle(g, opts['sql_db'] + ".gpickle")
+    nx.write_gpickle(g, osp.join(target_dir, "graph.gpickle"))
     if args.gml:
-        nx.readwrite.gml.write_gml(g, opts['sql_db'] + '.gml')
+        nx.readwrite.gml.write_gml(g, osp.join(target_dir, 'graph.gml'))
 
 
 if __name__ == '__main__':
