@@ -15,7 +15,6 @@ def single_query(p, query):
 
 
 def query_results(p, query):
-    # ipdb.set_trace()
     for q in tqdm(query, desc='Proc query'):
         for res in single_query(p, q[0]):
             yield q, res
