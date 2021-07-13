@@ -18,12 +18,6 @@ def query_results(p, query):
     for q in tqdm(query, desc='Proc query'):
         for res in single_query(p, q[0]):
             yield q, res
-        # for res in tqdm(p.query(q[0]), desc='Results', leave=False):
-        #     res = {
-        #         k: v.decode() if isinstance(v, (bytes, bytearray)) else v
-        #         for k, v in res.items()
-        #     }
-        #     yield q, res
 
 
 def clear_str(string):
